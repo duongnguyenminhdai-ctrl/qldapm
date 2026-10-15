@@ -1,0 +1,443 @@
+const Conversation = require("../models/Conversation");
+const Message = require("../models/Message");
+const User = require("../models/User");
+const { getIo } = require("../config/socketInstance");
+const { createAndSendNotification } = require("../services/notification.service");
+
+/**
+ * GET /api/messages/conversations
+ * Lấy danh sách hội thoại của user
+ */
+exports.getConversations = async (req, res, next) => {
+  try {
+    const currentUserId = req.user.id;
+
+    const conversations = await Conversation.find({
+      participants: currentUserId,
+    })
+      .populate("participants", "_id name email avatar isOnline lastSeen")
+      .populate("lastMessage.sender", "_id name avatar")
+      .sort({ updatedAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        conversations: conversations || [],
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/messages/create-group
+ * Tạo nhóm chat mới với danh sách friend IDs được chọn
+ */
+exports.createGroup = async (req, res, next) => {
+  try {
+    const currentUserId = req.user.id;
+    const { name, participantIds } = req.body;
+
+    if (!participantIds || !Array.isArray(participantIds) || participantIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng chọn ít nhất 1 bạn bè vào nhóm.",
+      });
+    }
+
+    const allParticipants = Array.from(
+      new Set([String(currentUserId), ...participantIds.map(String)])
+    );
+
+    const groupName = name && name.trim() ? name.trim() : "Nhóm học tập";
+
+    const conversation = await Conversation.create({
+      isGroup: true,
+      name: groupName,
+      participants: allParticipants,
+      lastMessage: {
+        text: `Đã tạo nhóm "${groupName}"`,
+        sender: currentUserId,
+        createdAt: new Date(),
+      },
+    });
+
+    const populated = await Conversation.findById(conversation._id)
+      .populate("participants", "_id name email avatar isOnline lastSeen")
+      .populate("lastMessage.sender", "_id name avatar");
+
+    const io = getIo();
+    if (io) {
+      allParticipants.forEach((pId) => {
+        io.to(`user:${pId}`).emit("chat:conversation-created", populated);
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        conversation: populated,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/messages/direct
+ * Lấy hoặc tạo cuộc hội thoại 1-1 với bạn bè
+ */
+exports.getOrCreateDirectConversation = async (req, res, next) => {
+  try {
+    const currentUserId = req.user.id;
+    const { friendId } = req.body;
+
+    if (!friendId) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu ID bạn bè.",
+      });
+    }
+
+    let conversation = await Conversation.findOne({
+      isGroup: false,
+      participants: { $all: [currentUserId, friendId], $size: 2 },
+    })
+      .populate("participants", "_id name email avatar isOnline lastSeen")
+      .populate("lastMessage.sender", "_id name avatar");
+
+    if (!conversation) {
+      const newConv = await Conversation.create({
+        isGroup: false,
+        participants: [currentUserId, friendId],
+      });
+      conversation = await Conversation.findById(newConv._id)
+        .populate("participants", "_id name email avatar isOnline lastSeen")
+        .populate("lastMessage.sender", "_id name avatar");
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        conversation,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/messages/:conversationId
+ * Lấy tin nhắn chi tiết của hội thoại
+ */
+exports.getMessages = async (req, res, next) => {
+  try {
+    const currentUserId = req.user.id;
+    const { conversationId } = req.params;
+
+    // Kiểm tra user có thuộc conversation không
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      participants: currentUserId,
+    });
+
+    if (!conversation) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền truy cập cuộc trò chuyện này.",
+      });
+    }
+
+    const messages = await Message.find({ conversationId })
+      .populate("sender", "_id name email avatar")
+      .sort({ createdAt: 1 })
+      .limit(100);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        messages: messages || [],
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/messages/send
+ * Gửi tin nhắn mới
+ */
+exports.sendMessage = async (req, res, next) => {
+  try {
+    const currentUserId = req.user.id;
+    const {
+      conversationId,
+      text,
+      image,
+      fileUrl,
+      fileName,
+      fileType,
+      fileSize,
+    } = req.body;
+
+    const trimmedText = typeof text === "string" ? text.trim() : "";
+    const trimmedImage = typeof image === "string" ? image.trim() : "";
+    const trimmedFileUrl = typeof fileUrl === "string" ? fileUrl.trim() : "";
+
+    if (!conversationId || (!trimmedText && !trimmedImage && !trimmedFileUrl)) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập nội dung tin nhắn, đính kèm ảnh hoặc tệp tin.",
+      });
+    }
+
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      participants: currentUserId,
+    });
+
+    if (!conversation) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền gửi tin nhắn vào cuộc trò chuyện này.",
+      });
+    }
+
+    const message = await Message.create({
+      conversationId,
+      sender: currentUserId,
+      text: trimmedText,
+      image: trimmedImage,
+      fileUrl: trimmedFileUrl,
+      fileName: fileName || "",
+      fileType: fileType || "",
+      fileSize: fileSize || 0,
+    });
+
+    // Cập nhật lastMessage trong conversation
+    let lastText = trimmedText;
+    if (!lastText) {
+      if (trimmedImage) lastText = "[Hình ảnh]";
+      else if (trimmedFileUrl) lastText = `[Tài liệu: ${fileName || "Tập tin"}]`;
+    }
+
+    conversation.lastMessage = {
+      text: lastText,
+      sender: currentUserId,
+      createdAt: message.createdAt,
+    };
+    await conversation.save();
+
+    const populatedMessage = await Message.findById(message._id).populate(
+      "sender",
+      "_id name email avatar"
+    );
+
+    // Phát socket realtime tới room conversationId và tới từng participant (nếu chưa join room)
+    const io = getIo();
+    if (io) {
+      io.to(`conversation:${conversationId}`).emit("chat:message", populatedMessage);
+
+      // Thông báo cập nhật danh sách hội thoại tới tất cả participants
+      conversation.participants.forEach((pId) => {
+        io.to(`user:${pId}`).emit("chat:conversation-updated", {
+          conversationId,
+          lastMessage: conversation.lastMessage,
+          message: populatedMessage,
+        });
+      });
+    }
+
+    // Bắn thông báo in-app tới chuông thông báo ở Dashboard của người nhận
+    const senderName = populatedMessage?.sender?.name || "Bạn bè";
+    let messageSnippet = trimmedText;
+    if (!messageSnippet) {
+      if (
+        trimmedImage ||
+        fileType === "image" ||
+        fileName?.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+      ) {
+        messageSnippet = "📷 Đã gửi một hình ảnh";
+      } else if (trimmedFileUrl || fileName) {
+        messageSnippet = `📎 Đã gửi tệp đính kèm: ${fileName || "Tài liệu"}`;
+      } else {
+        messageSnippet = "Đã gửi cho bạn một tin nhắn";
+      }
+    } else if (trimmedFileUrl || trimmedImage) {
+      messageSnippet = `${messageSnippet} [Đính kèm: ${fileName || "Tệp tin"}]`;
+    }
+
+    conversation.participants.forEach((pId) => {
+      if (String(pId) !== String(currentUserId)) {
+        createAndSendNotification({
+          recipientId: pId,
+          senderId: currentUserId,
+          type: "MESSAGE",
+          title: `Tin nhắn từ ${senderName}`,
+          message: messageSnippet,
+          link: `/dashboard?chat=${conversationId}`,
+        }).catch((err) =>
+          console.warn("[MessageController] Send in-app notif error:", err.message)
+        );
+      }
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        message: populatedMessage,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/messages/:id/revoke
+ * Thu hồi tin nhắn tương tự Messenger của Meta
+ */
+exports.revokeMessage = async (req, res, next) => {
+  try {
+    const currentUserId = req.user.id;
+    const messageId = req.params.id;
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy tin nhắn.",
+      });
+    }
+
+    // Chỉ người gửi tin nhắn mới có quyền thu hồi
+    if (String(message.sender) !== String(currentUserId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn chỉ có thể thu hồi tin nhắn do chính bạn gửi.",
+      });
+    }
+
+    if (message.isRevoked) {
+      return res.status(400).json({
+        success: false,
+        message: "Tin nhắn này đã được thu hồi trước đó.",
+      });
+    }
+
+    // Dọn dẹp tài nguyên Cloudinary nếu có đính kèm file hoặc ảnh
+    const fileToDelete = message.fileUrl || message.image;
+    if (fileToDelete) {
+      try {
+        const { extractCloudinaryInfo } = require("../utils/roomCleanup");
+        const cloudinary = require("../config/cloudinary");
+        const fileInfo = extractCloudinaryInfo(fileToDelete);
+        if (fileInfo?.publicId && cloudinary?.uploader) {
+          await cloudinary.uploader.destroy(fileInfo.publicId, {
+            resource_type: fileInfo.resourceType || "auto",
+            invalidate: true,
+          });
+        }
+      } catch (cloudErr) {
+        console.warn("[revokeMessage] Lỗi xóa file Cloudinary:", cloudErr.message);
+      }
+    }
+
+    // Đánh dấu đã thu hồi và xóa sạch nội dung/tệp đính kèm
+    message.isRevoked = true;
+    message.revokedAt = new Date();
+    message.isRecalled = true;
+    message.recalledAt = new Date();
+    message.text = "";
+    message.image = "";
+    message.fileUrl = "";
+    message.fileName = "";
+    message.fileType = "";
+    message.fileSize = 0;
+    await message.save();
+
+    const populatedMessage = await Message.findById(message._id).populate(
+      "sender",
+      "_id name email avatar"
+    );
+
+    // Cập nhật conversation lastMessage nếu tin nhắn này là tin mới nhất
+    const conversation = await Conversation.findById(message.conversationId);
+    if (conversation) {
+      const latestMessage = await Message.findOne({
+        conversationId: message.conversationId,
+      }).sort({ createdAt: -1 });
+
+      if (latestMessage) {
+        let lastText = latestMessage.isRevoked
+          ? "Tin nhắn đã bị thu hồi"
+          : latestMessage.text;
+        if (!lastText && !latestMessage.isRevoked) {
+          if (latestMessage.image) lastText = "[Hình ảnh]";
+          else if (latestMessage.fileUrl)
+            lastText = `[Tài liệu: ${latestMessage.fileName || "Tập tin"}]`;
+        }
+        conversation.lastMessage = {
+          text: lastText || "Tin nhắn đã bị thu hồi",
+          sender: latestMessage.sender,
+          createdAt: latestMessage.createdAt,
+        };
+        await conversation.save();
+      }
+
+      // Phát realtime qua socket tới phòng conversation và các cá nhân
+      const io = getIo();
+      if (io) {
+        const payload = {
+          messageId: message._id,
+          conversationId: message.conversationId,
+          message: populatedMessage,
+        };
+
+        // Phát realtime tới các room của conversation
+        io.to(`conversation:${message.conversationId}`).emit(
+          "chat:message-revoked",
+          payload
+        );
+        io.to(`conversation:${message.conversationId}`).emit(
+          "chat:message-recalled",
+          payload
+        );
+        io.to(String(message.conversationId)).emit(
+          "chat:message-revoked",
+          payload
+        );
+        io.to(String(message.conversationId)).emit(
+          "chat:message-recalled",
+          payload
+        );
+
+        if (Array.isArray(conversation.participants)) {
+          conversation.participants.forEach((pId) => {
+            const uidStr = String(pId?._id || pId);
+            io.to(`user:${uidStr}`).emit("chat:message-revoked", payload);
+            io.to(`user:${uidStr}`).emit("chat:message-recalled", payload);
+            io.to(`user:${uidStr}`).emit("chat:conversation-updated", {
+              conversationId: conversation._id,
+              lastMessage: conversation.lastMessage,
+            });
+          });
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Đã thu hồi tin nhắn thành công.",
+      data: {
+        message: populatedMessage,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
