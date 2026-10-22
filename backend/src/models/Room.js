@@ -44,6 +44,17 @@ const roomSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    status: {
+      type: String,
+      enum: ["active", "closed"],
+      default: "active",
+      index: true,
+    },
+    hostLeftAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
     isLocked: {
       type: Boolean,
       default: false,
@@ -60,9 +71,47 @@ const roomSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      default: "general", // "general", "tech", "languages", "math", "exam", "chill"
+      default: "general", // "general", "chess", "tech", "languages", "math", "exam", "chill"
       trim: true,
       index: true,
+    },
+    type: {
+      type: String,
+      default: "study", // "study" | "chess"
+      index: true,
+    },
+    chessState: {
+      fen: {
+        type: String,
+        default: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      },
+      whitePlayerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+      blackPlayerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+      gameStatus: {
+        type: String,
+        enum: ["waiting", "in_progress", "ended"],
+        default: "waiting",
+      },
+      winner: {
+        type: String,
+        default: null,
+      },
+      startedAt: {
+        type: Date,
+        default: null,
+      },
+      durationSeconds: {
+        type: Number,
+        default: 600,
+      },
     },
     maxMembers: {
       type: Number,
@@ -107,9 +156,10 @@ const roomSchema = new mongoose.Schema(
   }
 );
 
-// Compound indexes for public active room queries on Dashboard
-roomSchema.index({ isActive: 1, isPrivate: 1, createdAt: -1 });
-roomSchema.index({ isActive: 1, isPrivate: 1, category: 1, createdAt: -1 });
+// Compound indexes for public active room queries on Dashboard & Host pending check
+roomSchema.index({ isActive: 1, status: 1, isPrivate: 1, createdAt: -1 });
+roomSchema.index({ isActive: 1, status: 1, isPrivate: 1, category: 1, createdAt: -1 });
+roomSchema.index({ hostId: 1, status: 1, isActive: 1 });
 
 // Virtual getters để tương thích với các component cũ nếu có
 roomSchema.virtual("name").get(function () {

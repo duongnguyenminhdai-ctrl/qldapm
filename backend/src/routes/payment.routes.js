@@ -2,6 +2,7 @@ const express = require("express");
 const {
   createPaymentUrl,
   vnpayReturn,
+  vnpayIpn,
   getProStatus,
   getActivePackages,
 } = require("../controllers/payment.controller");
@@ -17,6 +18,9 @@ router.post("/create-payment-url", protect, createPaymentUrl);
 
 // GET  /api/payment/vnpay-return        — VNPay redirect callback (KHÔNG có protect, VNPay gọi)
 router.get("/vnpay-return", vnpayReturn);
+
+// GET  /api/payment/vnpay-ipn           — VNPay server-to-server webhook callback (IPN)
+router.get("/vnpay-ipn", vnpayIpn);
 
 // GET  /api/payment/pro-status          — Kiểm tra trạng thái Pro của user
 router.get("/pro-status", protect, getProStatus);

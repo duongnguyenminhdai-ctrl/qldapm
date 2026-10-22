@@ -60,10 +60,10 @@ export function AddFriendDialog({ trigger }) {
           <Button
             variant="outline"
             size="sm"
-            className="gap-1.5 border-zinc-200/80 bg-white/80 text-xs text-zinc-700 backdrop-blur-md hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-800/80 dark:bg-zinc-900/50 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            className="gap-1.5 border-stone-200 bg-[#ECE5DA] text-xs text-[#2D241E] hover:bg-[#DCD4C4] hover:text-[#1c1815] dark:border-[#3a3128] dark:bg-[#201b18] dark:text-[#d8c8b4] dark:hover:bg-[#26201c] dark:hover:text-[#f5ede3]"
           >
-            <UserPlus className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" strokeWidth={ICON_STROKE} />
-            <span className="hidden sm:inline">Thêm bạn</span>
+            <UserPlus className="h-3.5 w-3.5 text-[#966f38] dark:text-[#d8c8b4]" strokeWidth={ICON_STROKE} />
+            <span className="hidden sm:inline">+ Thêm bạn</span>
           </Button>
         )}
       </DialogTrigger>
@@ -71,14 +71,14 @@ export function AddFriendDialog({ trigger }) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-800/80 dark:text-zinc-200">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-stone-200 bg-[#ECE5DA] text-[#966f38] dark:border-[#3a3128] dark:bg-[#201b18] dark:text-[#c3a47b]">
               <UserPlus className="h-4 w-4" strokeWidth={ICON_STROKE} />
             </div>
             <div>
-              <DialogTitle className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+              <DialogTitle className="text-sm font-semibold tracking-tight text-[#2D241E] dark:text-[#f5ede3]">
                 Thêm bạn học mới
               </DialogTitle>
-              <DialogDescription className="text-xs text-zinc-500 dark:text-zinc-400">
+              <DialogDescription className="text-xs text-[#615247] dark:text-[#a89b8d]">
                 Gửi lời mời kết bạn qua địa chỉ email đã đăng ký của bạn bè.
               </DialogDescription>
             </div>
@@ -87,11 +87,11 @@ export function AddFriendDialog({ trigger }) {
 
         <form onSubmit={handleSendRequest} className="mt-2 space-y-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300" htmlFor="friend-email">
+            <label className="text-xs font-medium text-[#2D241E] dark:text-[#f5ede3]" htmlFor="friend-email">
               Địa chỉ Email
             </label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" strokeWidth={ICON_STROKE} />
+              <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8C7E72] dark:text-[#75695e]" strokeWidth={ICON_STROKE} />
               <input
                 id="friend-email"
                 type="email"
@@ -99,7 +99,7 @@ export function AddFriendDialog({ trigger }) {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="example@studyroom.com"
                 required
-                className="w-full rounded-xl border border-zinc-200/90 bg-white pl-9 pr-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-800/80 dark:bg-zinc-950/60 dark:text-zinc-100 dark:placeholder:text-zinc-600"
+                className="w-full rounded-xl border border-stone-200 bg-[#ECE5DA]/70 pl-9 pr-3 py-2 text-sm text-[#2D241E] placeholder:text-[#8C7E72] focus:border-[#b3894e] focus:outline-none focus:ring-1 focus:ring-[#b3894e] dark:border-[#3a3128] dark:bg-[#141210] dark:text-[#f5ede3] dark:placeholder:text-[#75695e] dark:focus:border-[#c3a47b] dark:focus:ring-[#c3a47b]"
               />
             </div>
           </div>

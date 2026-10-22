@@ -14,13 +14,13 @@ export default function UserTitleBadge({
   const meta = TITLE_STYLE_MAP[title] || {
     name: title,
     tag: "Danh hiệu",
-    color: "text-zinc-300 border-zinc-700/80 bg-zinc-800/40",
+    color: "text-stone-900 dark:text-stone-100 font-semibold",
   };
 
   const sizeClasses = {
-    xs: "text-[10px] px-1.5 py-0.5 gap-1",
-    sm: "text-xs px-2 py-0.5 gap-1.5",
-    md: "text-xs px-2.5 py-1 gap-1.5",
+    xs: "text-[10px] px-2 py-0.5 gap-1",
+    sm: "text-xs px-2.5 py-0.5 gap-1.5",
+    md: "text-xs px-3 py-1 gap-1.5",
   };
 
   const iconSizes = {
@@ -46,18 +46,18 @@ export default function UserTitleBadge({
       disabled={!onClick}
       title={onClick ? "Nhấn để xem Bộ sưu tập Danh hiệu & Quân hàm" : meta.name}
       className={cn(
-        "inline-flex items-center rounded-full border transition-all duration-200 select-none",
+        "inline-flex items-center rounded-full border border-amber-900/15 bg-stone-100/90 text-stone-800 dark:bg-[#251D16] dark:border-amber-500/20 dark:text-stone-200 transition-all duration-200 select-none shadow-xs",
         sizeClasses[size] || sizeClasses.sm,
         meta.color,
         onClick
-          ? "cursor-pointer hover:brightness-125 hover:scale-[1.02] active:scale-[0.98] shadow-sm"
+          ? "cursor-pointer hover:border-amber-600/50 hover:scale-[1.02] active:scale-[0.98]"
           : "cursor-default",
         className
       )}
     >
       {showIcon && (
         <IconComponent
-          className={cn(iconSizes[size] || iconSizes.sm, "shrink-0 opacity-80")}
+          className={cn(iconSizes[size] || iconSizes.sm, "shrink-0 text-[#c3a47b] opacity-90")}
         />
       )}
       <span className="font-medium tracking-tight truncate max-w-[130px] sm:max-w-none">

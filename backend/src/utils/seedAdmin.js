@@ -30,15 +30,23 @@ async function seedSuperAdmin() {
         title: "Đại tướng",
         equippedTitle: "Đại tướng",
         isPro: true,
-        streak: 99,
+        streak: 1,
         unlockedTitleIds: ["nhap-mon-hoc-gia", "thieu-uy", "dai-tuong"],
       });
       console.log(`[Seed] Đã tạo tài khoản Super Admin mặc định: ${adminEmail}`);
     } else {
-      // Đảm bảo admin hiện có có role là ADMIN và status ACTIVE
+      // Đảm bảo admin hiện có có role là ADMIN và status ACTIVE, xóa bỏ streak 99 gán cứng cũ
+      let changed = false;
       if (existingAdmin.role !== "ADMIN" || existingAdmin.status !== "ACTIVE") {
         existingAdmin.role = "ADMIN";
         existingAdmin.status = "ACTIVE";
+        changed = true;
+      }
+      if (existingAdmin.streak === 99) {
+        existingAdmin.streak = 1;
+        changed = true;
+      }
+      if (changed) {
         await existingAdmin.save();
       }
     }

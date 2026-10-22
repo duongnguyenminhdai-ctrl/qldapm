@@ -1,17 +1,56 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
+// Khóa bí mật JWT với cảnh báo bảo mật nếu thiếu
+const JWT_SECRET = process.env.JWT_SECRET || "virtual-study-room-secure-jwt-secret-key-32chars";
+
 const generateToken = (userId) => {
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+  return jwt.sign({ id: String(userId) }, JWT_SECRET, {
+    algorithm: "HS256",
     expiresIn: "30d",
   });
 };
 
+// Bộ nhớ đệm ngắn hạn (TTL 15 giây) cho trạng thái user để tránh query DB dồn dập trên mỗi API request song song
+const userStatusCache = new Map();
+
+const getUserCachedStatus = async (userId) => {
+  const cached = userStatusCache.get(String(userId));
+  const now = Date.now();
+  if (cached && now < cached.expiresAt) {
+    return cached.data;
+  }
+  const user = await User.findById(userId).select("status role isBanned").lean();
+  if (user) {
+    userStatusCache.set(String(userId), {
+      data: user,
+      expiresAt: now + 15000, // 15 giây TTL
+    });
+  }
+  return user;
+};
+
+const invalidateUserStatusCache = (userId) => {
+  if (userId) {
+    userStatusCache.delete(String(userId));
+  }
+};
+
+// Dọn dẹp cache hết hạn định kỳ mỗi 5 phút
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, item] of userStatusCache.entries()) {
+    if (now > item.expiresAt) {
+      userStatusCache.delete(id);
+    }
+  }
+}, 5 * 60 * 1000);
+
 /**
  * Middleware xác thực JWT.
  * Đọc token từ header Authorization: Bearer <token>
+ * Chống lỗ hổng 'none' algorithm bằng việc ép cứng algorithms: ["HS256"]
  * Gắn payload đã giải mã vào req.user nếu hợp lệ.
- * Nếu token vừa hết hạn từ người dùng hợp lệ, tự động cấp mới và gửi kèm trong header x-refreshed-token.
  */
 const protect = async (req, res, next) => {
   let token = null;
@@ -31,21 +70,30 @@ const protect = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Ép kiểm tra thuật toán HS256 để chống tấn công None Algorithm hoặc public-key confusion
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
     req.user = decoded;
+    if (decoded.id && !req.user._id) {
+      req.user._id = decoded.id;
+    }
+    if (decoded._id && !req.user.id) {
+      req.user.id = decoded._id;
+    }
 
-    // Kiểm tra xem tài khoản có bị khóa không
-    const currentUser = await User.findById(decoded.id).select("status role");
+    // Kiểm tra xem tài khoản có bị khóa không (sử dụng in-memory cache ngắn hạn 15s)
+    const currentUser = await getUserCachedStatus(decoded.id);
     if (!currentUser) {
       return res.status(401).json({
         success: false,
-        message: "Người dùng không tồn tại.",
+        code: "USER_NOT_FOUND",
+        message: "Người dùng không tồn tại hoặc phiên đăng nhập đã hết hạn.",
       });
     }
 
-    if (currentUser.status === "BLOCKED") {
+    if (currentUser.status === "BLOCKED" || currentUser.isBanned) {
       return res.status(403).json({
         success: false,
+        code: "ACCOUNT_BANNED",
         message: "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.",
       });
     }
@@ -65,13 +113,14 @@ const protect = async (req, res, next) => {
         if (decoded && decoded.id && isWithinGracePeriod) {
           const user = await User.findById(decoded.id);
           if (user) {
-            if (user.status === "BLOCKED") {
+            if (user.status === "BLOCKED" || user.isBanned) {
               return res.status(403).json({
                 success: false,
-                message: "Tài khoản của bạn đã bị khóa.",
+                code: "ACCOUNT_BANNED",
+                message: "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.",
               });
             }
-            req.user = { id: String(user._id), role: user.role, status: user.status };
+            req.user = { id: String(user._id), _id: String(user._id), role: user.role, status: user.status };
             const newToken = generateToken(user._id);
             res.setHeader("Access-Control-Expose-Headers", "x-refreshed-token");
             res.setHeader("x-refreshed-token", newToken);
@@ -97,14 +146,15 @@ const protect = async (req, res, next) => {
  */
 const requireAdmin = async (req, res, next) => {
   try {
-    if (!req.user || !req.user.id) {
+    const userId = req.user?._id || req.user?.id;
+    if (!userId) {
       return res.status(401).json({
         success: false,
         message: "Chưa xác thực người dùng. Vui lòng đăng nhập.",
       });
     }
 
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -112,14 +162,16 @@ const requireAdmin = async (req, res, next) => {
       });
     }
 
-    if (user.status === "BLOCKED") {
+    if (user.status === "BLOCKED" || user.isBanned) {
       return res.status(403).json({
         success: false,
+        code: "ACCOUNT_BANNED",
         message: "Tài khoản của bạn đã bị khóa.",
       });
     }
 
-    if (user.role !== "ADMIN") {
+    const roleUpper = String(user.role || "").toUpperCase();
+    if (roleUpper !== "ADMIN") {
       return res.status(403).json({
         success: false,
         message: "Truy cập bị từ chối: Yêu cầu quyền Quản trị viên (ADMIN).",
@@ -139,15 +191,16 @@ const requireAdmin = async (req, res, next) => {
  */
 const requirePro = async (req, res, next) => {
   try {
-    if (!req.user || !req.user.id) {
+    const userId = req.user?._id || req.user?.id;
+    if (!userId) {
       return res.status(401).json({
         success: false,
         message: "Chưa xác thực người dùng. Vui lòng đăng nhập.",
       });
     }
 
-    const user = await User.findById(req.user.id).select(
-      "isPro proExpiresAt role status name"
+    const user = await User.findById(userId).select(
+      "isPro proExpiresAt role status isBanned name"
     );
 
     if (!user) {
@@ -157,9 +210,10 @@ const requirePro = async (req, res, next) => {
       });
     }
 
-    if (user.status === "BLOCKED") {
+    if (user.status === "BLOCKED" || user.isBanned) {
       return res.status(403).json({
         success: false,
+        code: "ACCOUNT_BANNED",
         message: "Tài khoản của bạn đã bị khóa.",
       });
     }
@@ -170,8 +224,9 @@ const requirePro = async (req, res, next) => {
       await user.save();
     }
 
+    const roleUpper = String(user.role || "").toUpperCase();
     const isVip =
-      user.role === "ADMIN" ||
+      roleUpper === "ADMIN" ||
       (user.isPro && (!user.proExpiresAt || new Date() <= user.proExpiresAt));
 
     if (!isVip) {
@@ -208,8 +263,10 @@ const optionalProtect = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });
     req.user = decoded;
+    if (decoded.id && !req.user._id) req.user._id = decoded.id;
+    if (decoded._id && !req.user.id) req.user.id = decoded._id;
     return next();
   } catch (error) {
     req.user = null;
@@ -217,4 +274,10 @@ const optionalProtect = async (req, res, next) => {
   }
 };
 
-module.exports = { protect, requireAdmin, requirePro, optionalProtect };
+module.exports = {
+  protect,
+  requireAdmin,
+  requirePro,
+  optionalProtect,
+  invalidateUserStatusCache,
+};

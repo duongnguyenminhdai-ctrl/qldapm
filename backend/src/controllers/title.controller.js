@@ -188,25 +188,40 @@ const getTitles = async (req, res) => {
 };
 
 /**
- * POST /api/titles/equip
+ * POST /api/titles/equip, PUT /api/titles/equip, PATCH /api/titles/equip
  * Trang bị một danh hiệu đã mở khóa
- * Body: { titleId }
+ * Body: { titleId, badgeId, title, titleName }
  */
 const equipTitle = async (req, res) => {
   try {
-    const { titleId } = req.body;
-    if (!titleId) {
+    const rawParam =
+      req.body?.titleId ||
+      req.body?.badgeId ||
+      req.body?.title ||
+      req.body?.titleName ||
+      req.params?.titleId;
+
+    if (!rawParam) {
       return res.status(400).json({
         success: false,
-        message: "Vui lòng cung cấp titleId cần trang bị.",
+        message: "Vui lòng cung cấp titleId hoặc tên danh hiệu cần trang bị.",
       });
     }
 
-    const titleMeta = ALL_TITLES[titleId];
+    // Tra cứu metadata danh hiệu theo id hoặc name (không phân biệt hoa thường)
+    let titleMeta = ALL_TITLES[rawParam];
+    if (!titleMeta) {
+      titleMeta = Object.values(ALL_TITLES).find(
+        (t) =>
+          t.id.toLowerCase() === String(rawParam).toLowerCase() ||
+          t.name.toLowerCase() === String(rawParam).toLowerCase()
+      );
+    }
+
     if (!titleMeta) {
       return res.status(404).json({
         success: false,
-        message: "Danh hiệu không tồn tại trong hệ thống.",
+        message: `Danh hiệu "${rawParam}" không tồn tại trong hệ thống.`,
       });
     }
 
@@ -218,48 +233,115 @@ const equipTitle = async (req, res) => {
       });
     }
 
-    // Đảm bảo mở khóa tự động
+    // Đảm bảo mở khóa tự động theo thành tích hiện tại
     await autoUnlockTitles(user);
 
     const unlockedSet = new Set(user.unlockedTitleIds || []);
-    if (!unlockedSet.has(titleId)) {
+    let isQualified = unlockedSet.has(titleMeta.id);
+
+    // Kiểm tra trực tiếp các mốc điều kiện để bảo đảm tính chuẩn xác
+    if (!isQualified) {
+      const userStreak = user.streak || 1;
+      const studyHours = (user.totalStudySeconds || 0) / 3600;
+      const isPro = Boolean(user.isPro);
+      const proMonths = user.proMonths || (isPro ? 1 : 0);
+
+      if (titleMeta.category === "STREAK") {
+        isQualified = userStreak >= (titleMeta.minStreak || 1);
+      } else if (titleMeta.category === "HOURS") {
+        isQualified = studyHours >= (titleMeta.minHours || 0);
+      } else if (titleMeta.category === "PRO") {
+        isQualified = isPro && proMonths >= (titleMeta.minProMonths || 1);
+      }
+
+      // Danh hiệu tân thủ ban đầu (streak >= 1) luôn được trang bị
+      if (titleMeta.id === "nhap-mon-hoc-gia" || titleMeta.id === "thieu-uy") {
+        isQualified = true;
+      }
+
+      if (isQualified) {
+        unlockedSet.add(titleMeta.id);
+        user.unlockedTitleIds = Array.from(unlockedSet);
+      }
+    }
+
+    if (!isQualified) {
+      let requirementNotice = "";
+      if (titleMeta.category === "STREAK") {
+        requirementNotice = `Cần chuỗi học liên tục từ ${titleMeta.minStreak} ngày trở lên. Hiện tại: ${user.streak || 1} ngày.`;
+      } else if (titleMeta.category === "HOURS") {
+        requirementNotice = `Cần tích lũy tối thiểu ${titleMeta.minHours} giờ học. Hiện tại: ${((user.totalStudySeconds || 0) / 3600).toFixed(1)} giờ.`;
+      } else if (titleMeta.category === "PRO") {
+        requirementNotice = `Dành riêng cho hội viên gói Pro.`;
+      }
+
       return res.status(403).json({
         success: false,
-        message: `Bạn chưa mở khóa danh hiệu "${titleMeta.name}".`,
+        message: `Bạn chưa mở khóa danh hiệu "${titleMeta.name}". ${requirementNotice}`,
       });
     }
 
+    // Lưu equippedTitle, activeTitle và title vào MongoDB
     user.equippedTitle = titleMeta.name;
-    user.title = titleMeta.name; // đồng bộ với title ngắn
+    user.activeTitle = titleMeta.name;
+    user.title = titleMeta.name;
+
     await User.updateOne(
       { _id: user._id },
       {
         $set: {
           equippedTitle: titleMeta.name,
+          activeTitle: titleMeta.name,
           title: titleMeta.name,
+          unlockedTitleIds: Array.from(unlockedSet),
         },
       }
     );
 
-    // Phát socket realtime cập nhật danh hiệu nếu socket đang chạy
+    // Phát socket realtime cập nhật danh hiệu
     try {
       const io = getIo();
       if (io) {
         io.emit("user:title-updated", {
           userId: String(user._id),
-          equippedTitle: user.equippedTitle,
-          title: user.title,
+          equippedTitle: titleMeta.name,
+          activeTitle: titleMeta.name,
+          title: titleMeta.name,
         });
       }
     } catch (_) {}
+
+    // Lấy user document hoàn chỉnh để trả về
+    const updatedUser = await User.findById(user._id).select("-password");
+    const formattedUser = {
+      id: updatedUser._id,
+      _id: updatedUser._id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      avatar: updatedUser.avatar,
+      role: updatedUser.role || "USER",
+      status: updatedUser.status || "ACTIVE",
+      isPro: updatedUser.isPro || false,
+      title: updatedUser.title || titleMeta.name,
+      equippedTitle: updatedUser.equippedTitle || titleMeta.name,
+      activeTitle: updatedUser.activeTitle || titleMeta.name,
+      unlockedTitleIds: updatedUser.unlockedTitleIds || Array.from(unlockedSet),
+      streak: updatedUser.streak || 1,
+      totalStudySeconds: updatedUser.totalStudySeconds || 0,
+      proMonths: updatedUser.proMonths || 0,
+    };
 
     return res.status(200).json({
       success: true,
       message: `Đã trang bị danh hiệu "${titleMeta.name}" thành công!`,
       data: {
-        equippedTitle: user.equippedTitle,
-        titleId,
+        equippedTitle: titleMeta.name,
+        activeTitle: titleMeta.name,
+        title: titleMeta.name,
+        titleId: titleMeta.id,
+        user: formattedUser,
       },
+      user: formattedUser,
     });
   } catch (error) {
     console.error("[Title] equipTitle error:", error);

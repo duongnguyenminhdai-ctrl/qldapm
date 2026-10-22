@@ -1,6 +1,7 @@
 const express = require("express");
 const { askAITutor } = require("../controllers/aiTutor.controller");
 const { protect, requirePro } = require("../middlewares/authMiddleware");
+const { aiRateLimiter } = require("../middlewares/securityMiddleware");
 
 const router = express.Router();
 
@@ -8,8 +9,8 @@ const router = express.Router();
 router.use(protect);
 router.use(requirePro);
 
-// POST /api/ai/tutor
-router.post("/tutor", askAITutor);
+// POST /api/ai/tutor (áp dụng rate limiting 20 requests/phút)
+router.post("/tutor", aiRateLimiter, askAITutor);
 
 module.exports = router;
 

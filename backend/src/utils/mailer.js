@@ -25,10 +25,19 @@ const getTransporter = () => {
   });
 };
 
+const escapeHtml = (str) =>
+  String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
 /**
  * Template email HTML cao cấp theo phong cách Zinc / Dark Minimalist
  */
 const generateEmailTemplate = ({ title, preheader, name, otp, instruction, note }) => {
+  const safeName = escapeHtml(name || "bạn");
   return `
 <!DOCTYPE html>
 <html lang="vi">
@@ -72,7 +81,7 @@ const generateEmailTemplate = ({ title, preheader, name, otp, instruction, note 
                 ${title}
               </h1>
               <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #a1a1aa;">
-                Xin chào <strong style="color: #e4e4e7;">${name || "bạn"}</strong>,<br/>
+                Xin chào <strong style="color: #e4e4e7;">${safeName}</strong>,<br/>
                 ${instruction}
               </p>
 

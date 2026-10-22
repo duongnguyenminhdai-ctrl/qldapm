@@ -15,7 +15,7 @@ const SheetPortal = SheetPrimitive.Portal;
 const SheetOverlay = React.forwardRef(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
     className={cn(
-      "fixed inset-0 z-[50] bg-zinc-950/70",
+      "fixed inset-0 z-[50] bg-black/75 backdrop-blur-sm",
       "data-[state=open]:animate-in data-[state=closed]:animate-out",
       "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
@@ -27,7 +27,7 @@ const SheetOverlay = React.forwardRef(({ className, ...props }, ref) => (
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  "fixed z-[50] gap-4 border-zinc-800/60 bg-zinc-950 transition ease-taste data-[state=closed]:duration-200 data-[state=open]:duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out",
+  "fixed z-[50] gap-4 border-stone-200 bg-[#FAF8F5] text-[#2D241E] dark:border-[#3a3128] dark:bg-[#1c1815] dark:text-[#f5ede3] shadow-2xl transition ease-taste data-[state=closed]:duration-200 data-[state=open]:duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out",
   {
     variants: {
       side: {
@@ -54,7 +54,7 @@ const SheetContent = React.forwardRef(
         className={cn(sheetVariants({ side }), className)}
         {...props}
       >
-        <SheetPrimitive.Close className="absolute right-4 top-4 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-zinc-500">
+        <SheetPrimitive.Close className="absolute right-4 top-4 rounded-lg p-1.5 text-stone-400 transition hover:bg-stone-200 hover:text-[#2D241E] dark:text-[#75695e] dark:hover:bg-[#26201c] dark:hover:text-[#f5ede3] focus:outline-none focus:ring-1 focus:ring-[#c3a47b]">
           <X className="h-4 w-4" strokeWidth={ICON_STROKE} />
           <span className="sr-only">Đóng</span>
         </SheetPrimitive.Close>
@@ -77,7 +77,7 @@ function SheetHeader({ className, ...props }) {
 function SheetFooter({ className, ...props }) {
   return (
     <div
-      className={cn("mt-auto flex flex-col gap-2 border-t border-zinc-800/60 p-4", className)}
+      className={cn("mt-auto flex flex-col gap-2 border-t border-stone-200 dark:border-[#2d2620] p-4", className)}
       {...props}
     />
   );
@@ -86,7 +86,7 @@ function SheetFooter({ className, ...props }) {
 const SheetTitle = React.forwardRef(({ className, ...props }, ref) => (
   <SheetPrimitive.Title
     ref={ref}
-    className={cn("text-sm font-semibold text-zinc-100", className)}
+    className={cn("text-sm font-semibold text-[#2D241E] dark:text-[#f5ede3]", className)}
     {...props}
   />
 ));
@@ -95,7 +95,7 @@ SheetTitle.displayName = SheetPrimitive.Title.displayName;
 const SheetDescription = React.forwardRef(({ className, ...props }, ref) => (
   <SheetPrimitive.Description
     ref={ref}
-    className={cn("text-xs text-zinc-500", className)}
+    className={cn("text-xs text-stone-500 dark:text-[#75695e]", className)}
     {...props}
   />
 ));

@@ -18,7 +18,9 @@ import {
 import { connectSocket } from "@/lib/socket";
 import PricingModal from "@/components/payment/PricingModal";
 import VipBadge from "@/components/payment/VipBadge";
+import VipStatusModal from "@/components/vip/VipStatusModal";
 import UserTitleBadge from "@/components/titles/UserTitleBadge";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import TitlesModal from "@/components/titles/TitlesModal";
 import { PaginationControl } from "@/components/ui/PaginationControl";
 import {
@@ -48,6 +50,7 @@ export function DashboardClient() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [rooms, setRooms] = useState([]);
+  const [myPendingRoom, setMyPendingRoom] = useState(null);
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -62,6 +65,7 @@ export function DashboardClient() {
   });
   const [activeConversation, setActiveConversation] = useState(null);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
+  const [isVipModalOpen, setIsVipModalOpen] = useState(false);
   const [isTitlesModalOpen, setIsTitlesModalOpen] = useState(false);
 
   // Debounce tìm kiếm 300ms
@@ -198,13 +202,20 @@ export function DashboardClient() {
         sort: sortBy,
       };
       const result = await roomsApi.list(params);
-      setRooms(result?.data?.rooms || []);
+      const roomList = result?.data?.rooms || [];
+      setRooms(roomList);
+      const pending =
+        result?.data?.myPendingRoom ||
+        roomList.find((r) => r.isMyPendingRoom) ||
+        null;
+      setMyPendingRoom(pending);
       const pageMeta = result?.data?.pagination || result?.pagination;
       if (pageMeta) {
         setPagination(pageMeta);
       }
     } catch {
       setRooms([]);
+      setMyPendingRoom(null);
     } finally {
       setLoadingRooms(false);
     }
@@ -242,6 +253,16 @@ export function DashboardClient() {
 
     const onMembersSync = ({ participants, roomCode: syncCode }) => {
       if (!syncCode || !Array.isArray(participants)) return;
+      if (participants.length === 0) {
+        setRooms((prev) =>
+          prev.filter(
+            (r) =>
+              (r.roomCode || r.inviteCode || "").toUpperCase() !==
+              syncCode.toUpperCase()
+          )
+        );
+        return;
+      }
       setRooms((prev) =>
         prev.map((r) => {
           const code = (r.roomCode || r.inviteCode || "").toUpperCase();
@@ -253,13 +274,41 @@ export function DashboardClient() {
       );
     };
 
+    const onRoomListUpdated = ({ roomCode, action }) => {
+      if (!roomCode) {
+        fetchRooms();
+        return;
+      }
+      if (action === "deleted" || action === "closed") {
+        setRooms((prev) =>
+          prev.filter(
+            (r) =>
+              (r.roomCode || r.inviteCode || "").toUpperCase() !==
+              roomCode.toUpperCase()
+          )
+        );
+        setPagination((prev) => ({
+          ...prev,
+          totalItems: Math.max(0, prev.totalItems - 1),
+        }));
+      } else {
+        fetchRooms();
+      }
+    };
+
     socket.on("dashboard:room-created", onRoomCreated);
     socket.on("dashboard:room-deleted", onRoomDeleted);
+    socket.on("room:deleted", onRoomDeleted);
+    socket.on("room:closed", onRoomDeleted);
+    socket.on("room_list_updated", onRoomListUpdated);
     socket.on("room:members-sync", onMembersSync);
 
     return () => {
       socket.off("dashboard:room-created", onRoomCreated);
       socket.off("dashboard:room-deleted", onRoomDeleted);
+      socket.off("room:deleted", onRoomDeleted);
+      socket.off("room:closed", onRoomDeleted);
+      socket.off("room_list_updated", onRoomListUpdated);
       socket.off("room:members-sync", onMembersSync);
     };
   }, [fetchRooms]);
@@ -270,18 +319,24 @@ export function DashboardClient() {
   };
 
   return (
-    <div className="min-h-[100dvh]">
+    <div className="min-h-[100dvh] bg-[#141210] text-[#a89b8d]">
       {/* Header */}
-      <header className="border-b border-zinc-800/60">
+      <header className="sticky top-0 z-40 border-b border-[#3a3128] bg-[#181513]/90 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
           <Link
-            href="/"
-            className="text-sm font-semibold tracking-tight text-zinc-50"
+            href="/?book=rooms"
+            className="group flex items-center gap-2.5 font-serif text-base font-semibold tracking-tight text-[#f5ede3] hover:opacity-90 transition"
           >
-            Virtual Study Room
+            <img
+              src="/image/logo.png"
+              alt="Virtual Study Room Logo"
+              className="h-7 w-auto object-contain drop-shadow-sm transition-transform duration-200 group-hover:scale-105"
+            />
+            <span>Virtual Study Room</span>
           </Link>
 
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             {user ? (
               <>
                 {/* Nút Tìm & Kết bạn */}
@@ -296,21 +351,26 @@ export function DashboardClient() {
                   onSelectConversation={(conv) => setActiveConversation(conv)}
                 />
 
-                <div className="mx-1 h-4 w-[1px] bg-zinc-800" />
+                <div className="mx-1 h-4 w-[1px] bg-[#3a3128]" />
 
                 {/* Nút Nâng cấp Pro / Badge VIP */}
-                {user.isPro ? (
-                  <VipBadge size="sm" showLabel={true} />
+                {user.isPro || user.isVip ? (
+                  <VipBadge
+                    size="sm"
+                    showLabel={true}
+                    onClick={() => setIsVipModalOpen(true)}
+                    className="cursor-pointer transition-all hover:scale-105 active:scale-95 hover:shadow-md hover:shadow-amber-500/20"
+                  />
                 ) : (
                   <button
-                    onClick={() => setIsPricingOpen(true)}
+                    onClick={() => setIsVipModalOpen(true)}
                     id="btn-upgrade-pro"
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium
-                      text-amber-400 border border-amber-400/30 bg-amber-400/5
-                      hover:bg-amber-400/10 hover:border-amber-400/50 transition-all"
-                    title="Nâng cấp lên Pro"
+                      text-[#e8cca4] border border-[#c3a47b]/50 bg-[#c3a47b]/20
+                      hover:bg-[#c3a47b]/30 hover:border-[#c3a47b] transition-all cursor-pointer"
+                    title="Xem đặc quyền VIP & Hạn dùng"
                   >
-                    <Crown className="h-3.5 w-3.5" />
+                    <Crown className="h-3.5 w-3.5 text-[#e8cca4]" />
                     <span className="hidden sm:inline">Nâng cấp Pro</span>
                   </button>
                 )}
@@ -319,7 +379,7 @@ export function DashboardClient() {
                 <Link
                   href="/profile"
                   id="link-profile"
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/60 border border-zinc-800 transition"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-[#d8c8b4] hover:text-[#f5ede3] hover:bg-[#26201c] border border-[#3a3128] bg-[#201b18] transition"
                   title="Tài khoản & Bảo mật"
                 >
                   {user.avatar ? (
@@ -329,7 +389,7 @@ export function DashboardClient() {
                       className="h-4 w-4 rounded-full object-cover"
                     />
                   ) : (
-                    <User className="h-3.5 w-3.5 text-zinc-400" />
+                    <User className="h-3.5 w-3.5 text-[#a89b8d]" />
                   )}
                   <span className="hidden md:inline max-w-[120px] truncate">
                     {user.name || user.email}
@@ -341,10 +401,10 @@ export function DashboardClient() {
                   <Link
                     href="/admin"
                     id="link-admin-portal"
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-500/20 transition"
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#c3a47b]/10 text-[#e8cca4] border border-[#c3a47b]/30 hover:bg-[#c3a47b]/20 transition"
                     title="Cổng Quản trị viên"
                   >
-                    <ShieldCheck className="h-3.5 w-3.5" />
+                    <ShieldCheck className="h-3.5 w-3.5 text-[#c3a47b]" />
                     <span className="hidden sm:inline">Admin</span>
                   </Link>
                 )}
@@ -361,7 +421,7 @@ export function DashboardClient() {
                   size="sm"
                   onClick={handleLogout}
                   id="btn-logout"
-                  className="gap-1.5 text-zinc-400 hover:text-zinc-100"
+                  className="gap-1.5 text-[#75695e] hover:text-[#f5ede3] hover:bg-[#26201c]"
                 >
                   <LogOut className="h-3.5 w-3.5" strokeWidth={1.75} />
                   <span className="hidden sm:inline">Đăng xuất</span>
@@ -383,10 +443,10 @@ export function DashboardClient() {
 
       <main className="mx-auto max-w-5xl px-6 py-10">
         <div className="mb-10 max-w-lg">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">
+          <h1 className="font-serif text-3xl font-normal tracking-tight text-[#f5ede3]">
             Dashboard
           </h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <p className="mt-1 text-sm text-[#a89b8d]">
             Tạo phòng học mới hoặc tham gia bằng mã mời.
           </p>
         </div>
@@ -398,10 +458,10 @@ export function DashboardClient() {
               {/* Toolbar: Tiêu đề, Tìm kiếm & Sắp xếp */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-medium text-zinc-200">
+                  <h2 className="text-sm font-medium text-[#f5ede3]">
                     Phòng đang mở
                   </h2>
-                  <p className="text-xs text-zinc-500 mt-0.5">
+                  <p className="text-xs text-[#75695e] mt-0.5">
                     {pagination.totalItems > 0
                       ? `${pagination.totalItems} phòng trực tuyến`
                       : "Khám phá phòng học"}
@@ -412,7 +472,7 @@ export function DashboardClient() {
                   {/* Tìm kiếm */}
                   <div className="relative flex-1 sm:w-48">
                     <Search
-                      className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500"
+                      className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#75695e]"
                       strokeWidth={1.5}
                     />
                     <input
@@ -420,13 +480,13 @@ export function DashboardClient() {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Tìm theo tên/mã..."
-                      className="h-8 w-full rounded-lg border border-zinc-800 bg-zinc-950 pl-8 pr-7 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+                      className="h-8 w-full rounded-lg border border-[#3a3128] bg-[#141210] pl-8 pr-7 text-xs text-[#f5ede3] placeholder:text-[#75695e] focus:outline-none focus:ring-1 focus:ring-[#c3a47b] focus:border-[#c3a47b]"
                     />
                     {searchQuery && (
                       <button
                         type="button"
                         onClick={() => setSearchQuery("")}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-[#75695e] hover:text-[#f5ede3]"
                       >
                         <X className="h-3.5 w-3.5" strokeWidth={1.75} />
                       </button>
@@ -440,7 +500,7 @@ export function DashboardClient() {
                       setSortBy(e.target.value);
                       setPage(1);
                     }}
-                    className="h-8 rounded-lg border border-zinc-800 bg-zinc-950 px-2 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-zinc-600 cursor-pointer"
+                    className="h-8 rounded-lg border border-[#3a3128] bg-[#141210] px-2 text-xs text-[#d8c8b4] focus:outline-none focus:ring-1 focus:ring-[#c3a47b] cursor-pointer"
                     title="Sắp xếp danh sách"
                   >
                     {SORT_OPTIONS.map((opt) => (
@@ -464,10 +524,11 @@ export function DashboardClient() {
                         setCategory(cat.id);
                         setPage(1);
                       }}
-                      className={`whitespace-nowrap px-2.5 py-1 text-xs rounded-full transition ${isSelected
-                          ? "bg-zinc-100 text-zinc-950 font-medium shadow-xs"
-                          : "bg-zinc-900/60 text-zinc-400 border border-zinc-800/80 hover:bg-zinc-800 hover:text-zinc-200"
-                        }`}
+                      className={`whitespace-nowrap px-3 py-1 text-xs rounded-full transition ${
+                        isSelected
+                          ? "bg-[#c3a47b] text-[#161311] font-semibold shadow-xs"
+                          : "bg-[#201b18] text-[#a89b8d] border border-[#3a3128] hover:bg-[#26201c] hover:text-[#f5ede3]"
+                      }`}
                     >
                       {cat.label}
                     </button>
@@ -477,25 +538,25 @@ export function DashboardClient() {
             </div>
 
             {/* Danh sách phòng */}
-            <div className="mt-3 border-t border-zinc-800/60">
+            <div className="mt-3 border-t border-[#3a3128]">
               {loadingRooms ? (
                 <div className="space-y-0">
                   {[1, 2, 3, 4].map((i) => (
                     <div
                       key={i}
-                      className="animate-pulse border-b border-zinc-800/60 py-4"
+                      className="animate-pulse border-b border-[#3a3128] py-4"
                     >
-                      <div className="mb-2 h-4 w-40 rounded bg-zinc-800/60" />
-                      <div className="h-3 w-64 rounded bg-zinc-800/40" />
+                      <div className="mb-2 h-4 w-40 rounded bg-[#201b18]" />
+                      <div className="h-3 w-64 rounded bg-[#201b18]/60" />
                     </div>
                   ))}
                 </div>
               ) : rooms.length === 0 ? (
                 <div className="py-12 text-center">
-                  <p className="text-sm text-zinc-400">
+                  <p className="text-sm text-[#a89b8d]">
                     Không tìm thấy phòng phù hợp.
                   </p>
-                  <p className="mt-1 text-xs text-zinc-600">
+                  <p className="mt-1 text-xs text-[#75695e]">
                     {searchQuery || category !== "all"
                       ? "Thử xóa bộ lọc hoặc tìm kiếm với từ khóa khác."
                       : "Chưa có phòng nào đang mở. Tạo phòng học đầu tiên để bắt đầu."}
@@ -520,9 +581,9 @@ export function DashboardClient() {
           </section>
 
           {/* Sidebar: Tham gia & Tạo phòng */}
-          <aside className="space-y-8">
-            <div>
-              <h2 className="text-sm font-medium text-zinc-300">
+          <aside className="space-y-6">
+            <div className="rounded-2xl border border-[#3a3128] bg-[#201b18] p-5 shadow-lg">
+              <h2 className="text-sm font-medium text-[#f5ede3]">
                 Tham gia bằng mã
               </h2>
               <div className="mt-4">
@@ -530,11 +591,11 @@ export function DashboardClient() {
               </div>
             </div>
 
-            <div className="border-t border-zinc-800/60 pt-8">
-              <h2 className="mb-4 text-sm font-medium text-zinc-300">
+            <div className="rounded-2xl border border-[#3a3128] bg-[#201b18] p-5 shadow-lg">
+              <h2 className="mb-4 text-sm font-medium text-[#f5ede3]">
                 Tạo phòng
               </h2>
-              <CreateRoomModal />
+              <CreateRoomModal pendingRoom={myPendingRoom} />
             </div>
           </aside>
         </div>
@@ -553,6 +614,13 @@ export function DashboardClient() {
       <PricingModal
         isOpen={isPricingOpen}
         onClose={() => setIsPricingOpen(false)}
+        user={user}
+      />
+
+      {/* Modal chi tiết thời hạn & đặc quyền VIP */}
+      <VipStatusModal
+        isOpen={isVipModalOpen}
+        onClose={() => setIsVipModalOpen(false)}
         user={user}
       />
 

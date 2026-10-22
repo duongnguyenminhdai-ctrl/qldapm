@@ -1,6 +1,7 @@
 const { uploadBufferToCloudinary } = require("../middlewares/uploadMiddleware");
 const RoomFile = require("../models/RoomFile");
 const Room = require("../models/Room");
+const User = require("../models/User");
 const { getIo } = require("../config/socketInstance");
 const { sendNotificationToMultiple } = require("../services/notification.service");
 
@@ -165,8 +166,10 @@ const saveRoomFile = async (req, res) => {
       });
     }
 
-    const currentUserId = req.user.id;
+    const currentUserId = req.user.id || req.user._id;
     const userDoc = await User.findById(currentUserId).select("name avatar");
+    const validSenderId = req.user._id || req.user.id;
+    const sender = req.user;
 
     const newRoomFile = await RoomFile.create({
       roomCode,
@@ -195,11 +198,11 @@ const saveRoomFile = async (req, res) => {
       const roomNotif = {
         id: `rn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         type: fileType === "image" ? "IMAGE_SHARED" : "FILE_SHARED",
-        senderId: String(validSenderId || ""),
-        senderName: sender?.name || req.body.senderName || "Thành viên",
-        senderAvatar: sender?.avatar || req.body.senderAvatar || "",
+        senderId: String(validSenderId),
+        senderName: userDoc?.name || sender?.name || req.body.senderName || "Thành viên",
+        senderAvatar: userDoc?.avatar || sender?.avatar || req.body.senderAvatar || "",
         title: fileType === "image" ? "Ảnh mới trong phòng" : "Tài liệu mới trong phòng",
-        message: `${sender?.name || req.body.senderName || "Thành viên"} vừa chia sẻ "${fileName}"`,
+        message: `${userDoc?.name || sender?.name || req.body.senderName || "Thành viên"} vừa chia sẻ "${fileName}"`,
         fileUrl,
         fileName,
         fileType: fileType || "document",

@@ -129,12 +129,24 @@ export function MessagesPopover({ user, onSelectConversation }) {
       loadData();
     };
 
+    // Khi bị hoặc thực hiện hủy kết bạn -> xóa khỏi danh sách bạn bè
+    const handleFriendRemoved = ({ friendId } = {}) => {
+      if (!friendId) return;
+      setFriends((prev) => prev.filter((f) => String(f._id || f.id) !== String(friendId)));
+      loadData();
+    };
+
     socket.on("friend:status-change", handleFriendStatus);
     socket.on("chat:conversation-updated", handleConversationUpdated);
     socket.on("chat:conversation-created", handleNewConversation);
     socket.on("friend:accepted", handleFriendAccepted);
+    socket.on("friend_removed", handleFriendRemoved);
+    socket.on("friend:removed", handleFriendRemoved);
+    socket.on("friend_status_updated", ({ friendId, isFriend } = {}) => {
+      if (isFriend === false && friendId) handleFriendRemoved({ friendId });
+    });
 
-    // Lắng nghe sự kiện kết bạn nội bộ từ NotificationBell trên cùng tab
+    // Lắng nghe sự kiện kết bạn / hủy kết bạn nội bộ trên cùng tab
     const handleLocalFriendAccepted = (e) => {
       const friend = e.detail?.friend;
       if (friend) {
@@ -146,8 +158,16 @@ export function MessagesPopover({ user, onSelectConversation }) {
         loadData();
       }
     };
+    const handleLocalFriendRemoved = (e) => {
+      const friendId = e.detail?.friendId;
+      if (friendId) {
+        handleFriendRemoved({ friendId });
+      }
+    };
     if (typeof window !== "undefined") {
       window.addEventListener("vsr:friend-accepted", handleLocalFriendAccepted);
+      window.addEventListener("friend:removed", handleLocalFriendRemoved);
+      window.addEventListener("vsr:friend-removed", handleLocalFriendRemoved);
     }
 
     return () => {
@@ -155,8 +175,13 @@ export function MessagesPopover({ user, onSelectConversation }) {
       socket.off("chat:conversation-updated", handleConversationUpdated);
       socket.off("chat:conversation-created", handleNewConversation);
       socket.off("friend:accepted", handleFriendAccepted);
+      socket.off("friend_removed", handleFriendRemoved);
+      socket.off("friend:removed", handleFriendRemoved);
+      socket.off("friend_status_updated");
       if (typeof window !== "undefined") {
         window.removeEventListener("vsr:friend-accepted", handleLocalFriendAccepted);
+        window.removeEventListener("friend:removed", handleLocalFriendRemoved);
+        window.removeEventListener("vsr:friend-removed", handleLocalFriendRemoved);
       }
     };
   }, []);
@@ -262,23 +287,23 @@ export function MessagesPopover({ user, onSelectConversation }) {
       <button
         onClick={() => setOpen(!open)}
         aria-label="Tin nhắn"
-        className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200/80 bg-white/80 text-zinc-600 shadow-sm backdrop-blur-md transition hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-800/80 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+        className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-[#3a3128] bg-[#201b18] text-[#d8c8b4] shadow-sm backdrop-blur-md transition hover:bg-[#26201c] hover:text-[#f5ede3] active:scale-95"
       >
-        <MessageSquare className="h-4 w-4" strokeWidth={ICON_STROKE} />
+        <MessageSquare className="h-4 w-4 text-[#d8c8b4]" strokeWidth={ICON_STROKE} />
       </button>
 
       {/* Popover Messages kiểu Messenger */}
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-84 sm:w-96 rounded-2xl border border-zinc-200/90 bg-white shadow-xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 dark:border-zinc-800/80 dark:bg-zinc-950/95">
+        <div className="absolute right-0 top-11 z-50 w-84 sm:w-96 rounded-2xl border border-[#3a3128] bg-[#1c1815] shadow-2xl backdrop-blur-sm animate-in fade-in zoom-in-95 duration-150 text-[#f5ede3]">
           {/* Header */}
-          <div className="border-b border-zinc-100 p-3.5 dark:border-zinc-800/60">
+          <div className="border-b border-[#2d2620] p-3.5">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+                <h3 className="text-sm font-semibold tracking-tight text-[#f5ede3]">
                   Messages
                 </h3>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1.5" />
+                <p className="text-[11px] text-[#75695e]">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#c3a47b] mr-1.5" />
                   {onlineFriendsCount} bạn bè đang online
                 </p>
               </div>
@@ -286,22 +311,22 @@ export function MessagesPopover({ user, onSelectConversation }) {
                 variant="outline"
                 size="sm"
                 onClick={() => setNewChatModalOpen(true)}
-                className="h-7 gap-1 rounded-lg border-zinc-200 bg-zinc-50 px-2 text-[11px] text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900/80 dark:text-zinc-300 dark:hover:text-zinc-100"
+                className="h-7 gap-1 rounded-lg border-[#3a3128] bg-[#201b18] px-2 text-[11px] text-[#d8c8b4] hover:bg-[#26201c] hover:text-[#f5ede3]"
               >
-                <Plus className="h-3 w-3" strokeWidth={ICON_STROKE} />
+                <Plus className="h-3 w-3 text-[#c3a47b]" strokeWidth={ICON_STROKE} />
                 Tạo nhóm
               </Button>
             </div>
 
             {/* Ô tìm kiếm */}
             <div className="relative mt-3">
-              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" strokeWidth={ICON_STROKE} />
+              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#75695e]" strokeWidth={ICON_STROKE} />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Tìm kiếm cuộc trò chuyện..."
-                className="w-full rounded-xl border border-zinc-200 bg-zinc-50 pl-8 pr-3 py-1.5 text-xs text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:border-zinc-800/80 dark:bg-zinc-900/80 dark:text-zinc-100 dark:placeholder:text-zinc-600 dark:focus:border-zinc-500"
+                className="w-full rounded-xl border border-[#3a3128] bg-[#141210] pl-8 pr-3 py-1.5 text-xs text-[#f5ede3] placeholder:text-[#75695e] focus:border-[#c3a47b] focus:outline-none focus:ring-1 focus:ring-[#c3a47b]"
               />
             </div>
           </div>
@@ -399,7 +424,7 @@ export function MessagesPopover({ user, onSelectConversation }) {
 
       {/* Dialog tạo chat / nhóm mới */}
       <Dialog open={newChatModalOpen} onOpenChange={setNewChatModalOpen}>
-        <DialogContent className="max-w-md border-zinc-800/80 bg-zinc-950/90 backdrop-blur-xl">
+        <DialogContent className="max-w-md border-zinc-800/80 bg-zinc-950/95 backdrop-blur-sm">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold text-zinc-100">
               {selectedFriendIds.length > 1 ? "Tạo nhóm trò chuyện" : "Tin nhắn mới"}

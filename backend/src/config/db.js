@@ -22,7 +22,12 @@ const connectDB = async () => {
   }
 
   try {
-    const conn = await mongoose.connect(uri);
+    const conn = await mongoose.connect(uri, {
+      maxPoolSize: 50,
+      minPoolSize: 5, // Duy trì kết nối ấm (warm pool) để loại bỏ độ trễ TLS handshake
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
     console.log(
       `✅ MongoDB Connected... Host: ${conn.connection.host} | DB: ${conn.connection.name}`
     );

@@ -2,7 +2,10 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Link2, Users, AlertCircle, X, Award, QrCode, ShieldCheck, Lock, Unlock } from "lucide-react";
+import Link from "next/link";
+import dynamic from "next/dynamic";
+import { useTheme } from "next-themes";
+import { Check, Copy, Link2, Users, AlertCircle, X, Award, QrCode, ShieldCheck, Lock, Unlock, Sun, Moon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ICON_STROKE } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +16,18 @@ import {
   useLocalParticipant,
 } from "@livekit/components-react";
 import { LiveKitVideoStage } from "@/components/room/LiveKitVideoStage";
+
+const ChessStage = dynamic(
+  () => import("@/components/chess/ChessStage").then((mod) => mod.ChessStage || mod.default || mod),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-96 text-amber-500 font-medium">
+        Đang tải bàn cờ...
+      </div>
+    ),
+  }
+);
 import { FloatingDock } from "@/components/room/FloatingDock";
 import { RoomSidePanel } from "@/components/room/RoomSidePanel";
 import { RoomToastContainer, useRoomToast } from "@/components/room/RoomToast";
@@ -178,6 +193,8 @@ function LiveKitDockBridge({
   isHandRaised,
   onToggleHand,
   onSendReaction,
+  isHost = false,
+  participantsCount = 1,
 }) {
   const {
     isMicrophoneEnabled,
@@ -257,6 +274,8 @@ function LiveKitDockBridge({
       isHandRaised={isHandRaised}
       onToggleHand={onToggleHand}
       onSendReaction={onSendReaction}
+      isHost={isHost}
+      participantsCount={participantsCount}
     />
   );
 }
@@ -267,7 +286,21 @@ function LiveKitDockBridge({
  */
 export default function RoomLayout({ roomCode, initialRoom }) {
   const router = useRouter();
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const currentTheme = resolvedTheme || theme || "dark";
+  const isDark = isMounted ? currentTheme === "dark" : true;
+
   const [room, setRoom] = useState(initialRoom);
+
+  // Hook quản lý thông báo Toast và Ref socket phòng học (khai báo sớm để tránh TDZ)
+  const { toasts, addToast, dismissToast } = useRoomToast();
+  const socketRef = useRef(null);
 
   // Lấy thông tin user hiện tại từ localStorage
   const currentUser = getStoredUser();
@@ -340,10 +373,45 @@ export default function RoomLayout({ roomCode, initialRoom }) {
   const [permissionError, setPermissionError] = useState("");
   const [transcriptionOn, setTranscriptionOn] = useState(false);
   const [isSessionEnded, setIsSessionEnded] = useState(false);
+  const [aloneCountdown, setAloneCountdown] = useState(null); // { remainingSeconds, expiresAt }
   const transcriptionOnRef = useRef(transcriptionOn);
   useEffect(() => {
     transcriptionOnRef.current = transcriptionOn;
   }, [transcriptionOn]);
+
+  // Bộ đếm ngược khi phòng chỉ còn đúng 1 người duy nhất (Empty Room Timeout)
+  useEffect(() => {
+    if (!aloneCountdown || aloneCountdown.remainingSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setAloneCountdown((prev) => {
+        if (!prev) return null;
+        if (prev.remainingSeconds <= 1) {
+          clearInterval(interval);
+          return { ...prev, remainingSeconds: 0 };
+        }
+        return { ...prev, remainingSeconds: prev.remainingSeconds - 1 };
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aloneCountdown?.expiresAt, aloneCountdown === null]);
+
+  const handleStayAlone = useCallback(() => {
+    const socket = socketRef.current;
+    if (socket && socket.connected && roomCode) {
+      socket.emit("room:stay-alone", { roomCode });
+    }
+    setAloneCountdown({
+      remainingSeconds: 600,
+      expiresAt: Date.now() + 600 * 1000,
+    });
+    addToast({
+      type: "focus",
+      title: "Đã gia hạn phiên học",
+      body: "Bộ đếm thời gian phòng 1 người đã được làm mới lại 10:00.",
+    });
+  }, [roomCode, addToast]);
+
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [isTitlesModalOpen, setIsTitlesModalOpen] = useState(false);
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
@@ -470,18 +538,23 @@ export default function RoomLayout({ roomCode, initialRoom }) {
     return () => clearTimeout(timer);
   }, [permissionError]);
 
-  const socketRef = useRef(null);
   const copyLinkTimerRef = useRef(null);
   const copyCodeTimerRef = useRef(null);
   // Ref theo dõi trạng thái panel trong socket closure
   const panelOpenRef = useRef(panelOpen);
   useEffect(() => { panelOpenRef.current = panelOpen; }, [panelOpen]);
-  // Flag chỉ set true khi user chủ động bấm nút "Rời phòng" — không set khi F5/reload
-  const isIntentionalLeaveRef = useRef(false);
+  // Ref chống gửi rời phòng nhiều lần (idempotent leave guard)
+  const hasLeftRef = useRef(false);
+  // Ref xác nhận người dùng thực sự chủ động bấm rời phòng (chống StrictMode / effect remount)
+  const isExplicitlyLeavingRef = useRef(false);
+  // Ref ghi nhận thời điểm mount để tránh gọi leave sớm khi đang tải phòng
+  const mountTimeRef = useRef(Date.now());
+  const leaveRoomNowRef = useRef(null);
   // Ref chống trùng lặp toast giơ tay
   const lastHandToastRef = useRef({ userId: null, time: 0 });
-
-  const { toasts, addToast, dismissToast } = useRoomToast();
+  // Ref chống trùng lặp toast rời phòng và đóng phòng
+  const lastLeaveToastRef = useRef({ id: null, time: 0 });
+  const hasHostClosedToastRef = useRef(false);
 
   const speakingId = members.find((m) => m.isSpeaking)?.id ?? null;
 
@@ -648,6 +721,13 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       emitJoin();
     }
     socket.on("connect", emitJoin);
+
+    // Heartbeat tích lũy thời gian học tập mỗi 60 giây để nhận Thẻ Bài Học Giả
+    const studyHeartbeatInterval = setInterval(() => {
+      if (socket && socket.connected) {
+        socket.emit("room:study-heartbeat");
+      }
+    }, 60000);
 
     // Đồng bộ danh sách người đang chờ duyệt (dành cho Chủ phòng)
     socket.on("room:pending-updated", ({ roomCode: pCode, pendingList }) => {
@@ -831,9 +911,16 @@ export default function RoomLayout({ roomCode, initialRoom }) {
           return true;
         })
       );
-      // Toast thông báo
+      // Toast thông báo (có debounce chống lặp 3s)
       if (name) {
+        const now = Date.now();
+        const uKey = String(userId || socketId || name);
+        if (lastLeaveToastRef.current.id === uKey && now - lastLeaveToastRef.current.time < 3000) {
+          return;
+        }
+        lastLeaveToastRef.current = { id: uKey, time: now };
         addToast({
+          key: `leave_${uKey}`,
           type: "leave",
           title: "Thành viên rời phòng",
           body: `${name} đã rời cuộc học.`,
@@ -841,25 +928,80 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       }
     });
 
-    // Host đóng phòng - thông báo rồi chuyển hướng (bảo toàn bảng chép lời)
-    socket.on("room:host-closed", ({ message }) => {
-      setIsSessionEnded(true);
-      addToast({
-        type: "host_closed",
-        title: "Phiên học đã kết thúc",
-        body:
-          message ||
-          "Chủ phòng đã kết thúc buổi học. Toàn bộ tài liệu phòng đã dọn sạch, bản chép lời được lưu an toàn.",
+    // Cảnh báo người dùng là người duy nhất trong phòng (10 phút)
+    socket.on("room:alone-warning", ({ message, remainingSeconds, expiresAt }) => {
+      const sec = typeof remainingSeconds === "number" ? remainingSeconds : 600;
+      setAloneCountdown({
+        remainingSeconds: sec,
+        expiresAt: expiresAt || Date.now() + sec * 1000,
       });
+    });
 
-      // Nếu không bật chép lời thì chuyển hướng sau 4 giây
+    // Khi có thêm người tham gia phòng -> Hủy đếm ngược 10 phút một mình
+    socket.on("room:alone-cancelled", () => {
+      setAloneCountdown(null);
+    });
+
+    // Host rời cuộc gọi tạm thời
+    socket.on("room:host-left-temporary", ({ message }) => {
+      addToast({
+        type: "warning",
+        title: "Chủ phòng đã rời cuộc gọi",
+        body: message || "Chủ phòng đã rời cuộc gọi. Phiên học sẽ tự đóng sau 10 phút nếu chủ phòng không quay lại.",
+      });
+    });
+
+    // Host quay trở lại cuộc gọi
+    socket.on("room:host-returned", ({ message }) => {
+      addToast({
+        type: "join",
+        title: "Chủ phòng đã quay lại",
+        body: message || "Chủ phòng đã quay trở lại cuộc gọi.",
+      });
+    });
+
+
+    // Sự kiện phòng kết thúc / bị giải tán (Google Meet style)
+    const handleRoomTerminated = ({ message, reason }) => {
+      setIsSessionEnded(true);
+      setAloneCountdown(null);
+
+      let title = "Chủ phòng đã kết thúc phiên học";
+      let bodyText = message || "Chủ phòng đã kết thúc phiên học.";
+
+      if (reason === "alone_timeout") {
+        title = "Phiên học đã đóng";
+        bodyText = message || "Bạn là người duy nhất trong phòng và phiên học đã tự động đóng sau 10 phút.";
+      } else if (reason === "max_duration") {
+        title = "Phiên học đạt giới hạn 24 giờ";
+        bodyText = message || "Phiên học đã đạt thời lượng tối đa 24 giờ và tự động kết thúc.";
+      } else if (reason === "host_timeout") {
+        title = "Chủ phòng không quay lại";
+        bodyText = message || "Phiên học tự động đóng do chủ phòng đã rời cuộc gọi quá 10 phút.";
+      }
+
+      // Nếu chính user này chủ động bấm nút rời phòng, không hiển thị toast
+      if (!isExplicitlyLeavingRef.current && !hasHostClosedToastRef.current) {
+        hasHostClosedToastRef.current = true;
+        addToast({
+          key: "room_terminated",
+          type: "host_closed",
+          title,
+          body: bodyText,
+        });
+      }
+
+      // Nếu không bật chép lời thì redirect về trang chủ sau 2.5 giây
       // Nếu ĐANG BẬT chép lời, không tự động chuyển trang để người dùng thoải mái sao chép hoặc tải .txt
       if (!transcriptionOnRef.current) {
         setTimeout(() => {
-          router.push("/dashboard");
-        }, 4000);
+          router.push("/dashboard?book=rooms");
+        }, 2500);
       }
-    });
+    };
+
+    socket.on("room_terminated", handleRoomTerminated);
+    socket.on("room:host-closed", handleRoomTerminated);
 
     // Thành viên bị mời rời phòng (kick)
     socket.on("room:user-kicked", ({ targetUserId, targetName, hostName, reason }) => {
@@ -871,7 +1013,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
           body: reason || `${hostName} đã mời bạn rời khỏi phòng học.`,
         });
         setTimeout(() => {
-          router.push("/dashboard");
+          router.push("/dashboard?book=rooms");
         }, 2500);
       } else {
         setMembers((prev) => prev.filter((m) => String(m.id) !== String(targetUserId)));
@@ -893,7 +1035,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
           body: reason || `${hostName} đã cấm bạn vào phòng học này.`,
         });
         setTimeout(() => {
-          router.push("/dashboard");
+          router.push("/dashboard?book=rooms");
         }, 2500);
       } else {
         setMembers((prev) => prev.filter((m) => String(m.id) !== String(targetUserId)));
@@ -972,28 +1114,39 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       }
     });
 
-    // Lắng nghe tin nhắn bị thu hồi realtime
-    socket.on("chat:message-recalled", ({ messageId, recalledBy, recalledAt, fileUrl }) => {
+    // Lắng nghe tin nhắn / bình chọn bị thu hồi realtime
+    const handleMessageRecalled = ({ messageId, pollId, recalledBy, recalledAt, fileUrl, isPoll }) => {
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId
-            ? {
-                ...m,
-                isRecalled: true,
-                recalledBy,
-                recalledAt,
-                text: "",
-                file: null,
-                fileUrl: null,
-                fileName: null,
-              }
-            : m
-        )
+        prev.map((m) => {
+          const isTarget =
+            m.id === messageId ||
+            (pollId && (m.id === pollId || m.poll?.id === pollId)) ||
+            (messageId && m.poll?.id === messageId);
+          if (isTarget) {
+            return {
+              ...m,
+              isRecalled: true,
+              recalledBy,
+              recalledAt,
+              text: isPoll || m.type === "poll" || m.poll ? "Bình chọn này đã được thu hồi" : "",
+              file: null,
+              fileUrl: null,
+              fileName: null,
+              poll: m.poll ? { ...m.poll, isRecalled: true } : null,
+            };
+          }
+          return m;
+        })
       );
       if (fileUrl) {
         setRoomFiles((prev) => prev.filter((f) => f.fileUrl !== fileUrl));
       }
-    });
+    };
+
+    socket.on("chat:message-recalled", handleMessageRecalled);
+    socket.on("message_recalled", handleMessageRecalled);
+    socket.on("poll_recalled", handleMessageRecalled);
+    socket.on("poll:recalled", handleMessageRecalled);
 
     // Lắng nghe đồng bộ Pomodoro authoritative từ server
     socket.on("pomodoro:sync", (data) => {
@@ -1104,25 +1257,35 @@ export default function RoomLayout({ roomCode, initialRoom }) {
     });
 
     // Lắng nghe cập nhật bình chọn nhanh (Quick Poll)
-    socket.on("poll:vote-updated", ({ pollId, poll }) => {
+    const handlePollUpdate = ({ pollId, poll, options, totalVotes, isClosed }) => {
       setMessages((prev) =>
         prev.map((m) => {
           if ((m.type === "poll" || m.poll) && (m.id === pollId || m.poll?.id === pollId)) {
+            const updatedPoll = poll || (m.poll ? { ...m.poll } : {});
+            if (options) updatedPoll.options = options;
+            if (totalVotes !== undefined) updatedPoll.totalVotes = totalVotes;
+            if (isClosed !== undefined) updatedPoll.isClosed = isClosed;
             return {
               ...m,
-              poll: poll || m.poll,
+              poll: updatedPoll,
             };
           }
           return m;
         })
       );
-    });
+    };
+
+    socket.on("poll:vote-updated", handlePollUpdate);
+    socket.on("poll_updated", handlePollUpdate);
+    socket.on("poll:locked", handlePollUpdate);
 
     return () => {
       socket.off("room:members-sync");
       socket.off("room:user-joined");
       socket.off("room:user-left");
       socket.off("room:host-closed");
+      socket.off("room:host-left-temporary");
+      socket.off("room:host-returned");
       socket.off("room:user-kicked");
       socket.off("room:user-banned");
       socket.off("room:lock-updated");
@@ -1132,10 +1295,15 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       socket.off("room:focus-status-updated");
       socket.off("chat:item-pinned");
       socket.off("chat:item-unpinned");
-      socket.off("poll:vote-updated");
+      socket.off("poll:vote-updated", handlePollUpdate);
+      socket.off("poll_updated", handlePollUpdate);
+      socket.off("poll:locked", handlePollUpdate);
       socket.off("chat:new-message");
       socket.off("chat:sync-messages");
-      socket.off("chat:message-recalled");
+      socket.off("chat:message-recalled", handleMessageRecalled);
+      socket.off("message_recalled", handleMessageRecalled);
+      socket.off("poll_recalled", handleMessageRecalled);
+      socket.off("poll:recalled", handleMessageRecalled);
       socket.off("room:sync-files");
       socket.off("room:file-shared");
       socket.off("room:file-deleted");
@@ -1147,6 +1315,11 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       socket.off("user:title-updated");
       socket.off("room:pending-updated");
       socket.off("room:join-requested");
+      socket.off("room:alone-warning");
+      socket.off("room:alone-cancelled");
+      socket.off("room_terminated", handleRoomTerminated);
+      socket.off("room:terminated", handleRoomTerminated);
+      clearInterval(studyHeartbeatInterval);
       window.removeEventListener("focus", handleWindowFocus);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1299,6 +1472,72 @@ export default function RoomLayout({ roomCode, initialRoom }) {
     }
   }, [roomCode]);
 
+  // Khóa bình chọn (Lock Poll)
+  const handleLockPoll = useCallback((pollId) => {
+    const socket = socketRef.current;
+    if (socket && socket.connected) {
+      socket.emit("poll:lock", {
+        roomCode,
+        pollId,
+      });
+    }
+  }, [roomCode]);
+
+  // Thêm phương án bình chọn (Add Option Poll)
+  const handleAddOptionPoll = useCallback((pollId, optionText) => {
+    return new Promise((resolve, reject) => {
+      const socket = socketRef.current;
+      if (socket && socket.connected) {
+        socket.emit(
+          "poll:add-option",
+          { roomCode, pollId, optionText },
+          (res) => {
+            if (res?.success) {
+              resolve(res);
+            } else {
+              reject(new Error(res?.message || "Không thể thêm phương án"));
+            }
+          }
+        );
+      } else {
+        reject(new Error("Mất kết nối máy chủ"));
+      }
+    });
+  }, [roomCode]);
+
+  // Thu hồi bình chọn (Recall Poll)
+  const handleRecallPoll = useCallback(
+    (messageId, pollId) => {
+      const socket = socketRef.current;
+      if (socket && socket.connected) {
+        socket.emit(
+          "chat:recall-poll",
+          {
+            roomCode,
+            messageId,
+            pollId,
+          },
+          (res) => {
+            if (res?.success) {
+              addToast({
+                type: "success",
+                title: "Thu hồi bình chọn",
+                body: "Cuộc bình chọn đã được thu hồi với mọi người trong phòng.",
+              });
+            } else if (res?.message) {
+              addToast({
+                type: "error",
+                title: "Không thể thu hồi",
+                body: res.message,
+              });
+            }
+          }
+        );
+      }
+    },
+    [roomCode, addToast]
+  );
+
   const handleTogglePomodoro = useCallback(() => {
     const socket = socketRef.current;
     if (!socket || !socket.connected) return;
@@ -1444,19 +1683,86 @@ export default function RoomLayout({ roomCode, initialRoom }) {
     }
   }, [roomCode]);
 
-  // Xử lý rời phòng — chỉ emit leave-room khi user chủ động rời
-  const handleLeave = useCallback(() => {
-    // Đánh dấu là rời có chủ đích
-    isIntentionalLeaveRef.current = true;
-    const socket = socketRef.current;
-    if (socket && socket.connected && currentUserId) {
-      socket.emit("leave-room", {
-        roomCode,
-        userId: currentUserId,
-      });
+  // Hàm thực hiện rời phòng tức thì: phát socket event và gọi API /rooms/leave (beacon / keepalive fetch)
+  const leaveRoomNow = useCallback((isExplicit = false, options = {}) => {
+    // Nếu không phải là hành động bấm rời phòng trực tiếp và phòng vừa mount < 4s -> Bỏ qua (chống StrictMode / remount)
+    if (!isExplicit && Date.now() - mountTimeRef.current < 4000) {
+      console.warn("[Room] Bỏ qua rời phòng tự động trong 4 giây khởi tạo đầu tiên.");
+      return;
     }
-    router.push("/dashboard");
-  }, [roomCode, currentUserId, router]);
+
+    if (hasLeftRef.current) return;
+    hasLeftRef.current = true;
+
+    const code = roomCode || room?.roomCode;
+    const rId = room?._id || code;
+    const uId = currentUserId;
+    const terminate = Boolean(options?.terminate);
+    const action = options?.action || (terminate ? "terminate" : "leave_only");
+
+    // 1. Gửi socket event tức thì (hỗ trợ cả terminate_room, leave_room và leave-room)
+    const socket = socketRef.current;
+    if (socket && socket.connected && uId) {
+      try {
+        if (terminate) {
+          socket.emit("terminate_room", { roomCode: code, roomId: rId, userId: uId });
+          socket.emit("room:terminate", { roomCode: code, roomId: rId, userId: uId });
+        } else {
+          socket.emit("leave_room", { roomCode: code, roomId: rId, userId: uId, action, terminate: false });
+          socket.emit("leave-room", { roomCode: code, roomId: rId, userId: uId, action, terminate: false });
+        }
+      } catch (_) {}
+    }
+
+    // 2. Gọi API rời phòng qua navigator.sendBeacon hoặc fetch keepalive
+    if (code && uId) {
+      try {
+        const token = getAuthToken();
+        const payload = JSON.stringify({
+          roomCode: code,
+          roomId: rId,
+          userId: uId,
+          token,
+          terminate,
+          action,
+        });
+
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+        const leaveUrl = `${API_BASE}/rooms/leave`;
+
+        let beaconSent = false;
+        if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+          try {
+            const blob = new Blob([payload], { type: "application/json" });
+            beaconSent = navigator.sendBeacon(leaveUrl, blob);
+          } catch (_) {}
+        }
+
+        if (!beaconSent && typeof fetch !== "undefined") {
+          fetch(leaveUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: payload,
+            keepalive: true,
+          }).catch(() => {});
+        }
+      } catch (_) {}
+    }
+  }, [roomCode, room, currentUserId]);
+
+  useEffect(() => {
+    leaveRoomNowRef.current = leaveRoomNow;
+  }, [leaveRoomNow]);
+
+  // Xử lý khi người dùng chủ động bấm nút "Rời phòng" trên giao diện
+  const handleLeave = useCallback((options = {}) => {
+    isExplicitlyLeavingRef.current = true;
+    leaveRoomNow(true, options);
+    router.push("/dashboard?book=rooms");
+  }, [leaveRoomNow, router]);
 
   // Sao chép liên kết phòng
   const handleCopyLink = useCallback(() => {
@@ -1482,18 +1788,28 @@ export default function RoomLayout({ roomCode, initialRoom }) {
     copyCodeTimerRef.current = setTimeout(() => setCopiedCode(false), 2000);
   }, [room?.roomCode, roomCode]);
 
-  // Cleanup timers + bảo vệ khỏi leave-room vô tình khi F5 / đóng tab
+  // Bắt sự kiện người dùng rời phòng: đóng tab, F5, bấm nút Back trình duyệt
   useEffect(() => {
     const handleBeforeUnload = () => {
-      // Khi F5 hoặc đóng tab, đảm bảo isIntentionalLeave = false
-      // Socket.io sẽ tự disconnect → backend grace timer xử lý
-      isIntentionalLeaveRef.current = false;
+      if (leaveRoomNowRef.current) {
+        leaveRoomNowRef.current(false);
+      }
     };
+
     window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handleBeforeUnload);
+
     return () => {
       clearTimeout(copyLinkTimerRef.current);
       clearTimeout(copyCodeTimerRef.current);
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handleBeforeUnload);
+
+      // CHỈ gọi leaveRoomNow khi người dùng THỰC SỰ chủ động bấm rời phòng
+      // Tuyệt đối KHÔNG gọi khi mount -> unmount tự động trong StrictMode
+      if (isExplicitlyLeavingRef.current && leaveRoomNowRef.current) {
+        leaveRoomNowRef.current(true);
+      }
     };
   }, []);
 
@@ -1511,6 +1827,19 @@ export default function RoomLayout({ roomCode, initialRoom }) {
         )
       : 0;
 
+  if (!isMounted) {
+    return (
+      <div
+        className="room-shell bg-[#FAF8F5] dark:bg-[#141210] flex flex-col min-h-[100dvh]"
+        suppressHydrationWarning={true}
+      >
+        <div className="flex flex-1 items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-[#b3894e] dark:border-[#3a3128] dark:border-t-[#c3a47b]" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <LiveKitRoom
       token={livekitToken}
@@ -1522,6 +1851,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       onError={(err) => console.warn("[LiveKit] Room error:", err)}
       className="room-shell"
       data-lk-theme="default"
+      suppressHydrationWarning={true}
     >
       <RoomAudioRenderer />
       <LiveKitRemoteMuteController
@@ -1531,47 +1861,60 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       />
 
       {/* Header phòng */}
-      <header className="relative z-[30] flex shrink-0 items-center justify-between gap-3 border-b border-zinc-800/60 bg-zinc-950 px-4 py-3 sm:px-6">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="truncate text-sm font-semibold tracking-tight text-zinc-50 sm:text-base">
-              {displayTitle}
-            </h1>
-            <Badge variant="muted" className="gap-1 font-normal">
-              <Users className="h-3 w-3" strokeWidth={ICON_STROKE} />
-              {members.length}
-            </Badge>
-
-            {/* Trạng thái phòng bị khóa đối với thành viên thông thường */}
-            {!isHost && isLocked && (
-              <Badge
-                variant="outline"
-                className="border-rose-500/40 bg-rose-950/40 text-rose-300 gap-1 text-[11px] font-normal py-0.5 px-2"
-                title="Phòng đang bị khóa bởi chủ phòng"
-              >
-                <Lock className="h-3 w-3 text-rose-400" />
-                <span className="hidden sm:inline">Phòng bị khóa</span>
+      <header className="relative z-[30] flex shrink-0 items-center justify-between gap-3 border-b border-stone-200 bg-[#FAF8F5]/90 dark:border-[#3a3128] dark:bg-[#181513]/90 backdrop-blur-sm px-4 py-3 sm:px-6">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link
+            href="/?book=rooms"
+            title="Về sảnh sách phòng học"
+            className="shrink-0 hover:opacity-85 transition-opacity"
+          >
+            <img
+              src="/image/logo.png"
+              alt="Virtual Study Room Logo"
+              className="h-7 w-auto object-contain drop-shadow-sm"
+            />
+          </Link>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate font-serif text-base font-semibold tracking-tight text-[#2D241E] dark:text-[#f5ede3] sm:text-lg">
+                {displayTitle}
+              </h1>
+              <Badge variant="muted" className="gap-1 font-normal">
+                <Users className="h-3 w-3" strokeWidth={ICON_STROKE} />
+                {members.length}
               </Badge>
+
+              {/* Trạng thái phòng bị khóa đối với thành viên thông thường */}
+              {!isHost && isLocked && (
+                <Badge
+                  variant="outline"
+                  className="border-[#8b2626]/40 bg-[#8b2626]/20 text-[#f5ede3] gap-1 text-[11px] font-normal py-0.5 px-2"
+                  title="Phòng đang bị khóa bởi chủ phòng"
+                >
+                  <Lock className="h-3 w-3 text-[#c3a47b]" />
+                  <span className="hidden sm:inline">Phòng bị khóa</span>
+                </Badge>
+              )}
+            </div>
+
+            {displayCode && (
+              <button
+                type="button"
+                onClick={handleCopyCode}
+                title="Sao chép mã phòng"
+                aria-label="Sao chép mã phòng"
+                id="btn-copy-room-code"
+                className="mt-0.5 flex items-center gap-1.5 font-mono text-xs text-stone-500 hover:text-[#b3894e] dark:text-[#a89b8d] dark:hover:text-[#c3a47b] transition"
+              >
+                <span className="tracking-widest">{displayCode}</span>
+                {copiedCode ? (
+                  <Check className="h-3 w-3 text-[#c3a47b]" strokeWidth={2} />
+                ) : (
+                  <Copy className="h-3 w-3" strokeWidth={1.75} />
+                )}
+              </button>
             )}
           </div>
-
-          {displayCode && (
-            <button
-              type="button"
-              onClick={handleCopyCode}
-              title="Sao chép mã phòng"
-              aria-label="Sao chép mã phòng"
-              id="btn-copy-room-code"
-              className="mt-0.5 flex items-center gap-1.5 font-mono text-xs text-zinc-600 transition hover:text-zinc-400"
-            >
-              <span className="tracking-widest">{displayCode}</span>
-              {copiedCode ? (
-                <Check className="h-3 w-3 text-emerald-400" strokeWidth={2} />
-              ) : (
-                <Copy className="h-3 w-3" strokeWidth={1.75} />
-              )}
-            </button>
-          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -1586,8 +1929,8 @@ export default function RoomLayout({ roomCode, initialRoom }) {
               className={cn(
                 "gap-1.5 text-xs transition-colors",
                 isLocked
-                  ? "border-rose-500/50 bg-rose-950/60 text-rose-300 hover:bg-rose-900/60 hover:text-white"
-                  : "text-zinc-300 hover:text-white"
+                  ? "border-[#8b2626]/50 bg-[#8b2626]/25 text-[#f5ede3] hover:bg-[#8b2626]/40"
+                  : "border-stone-300 text-[#2D241E] hover:bg-stone-200 dark:border-[#3a3128] dark:text-[#d8c8b4] dark:hover:text-[#f5ede3] dark:hover:bg-[#201b18]"
               )}
               title={
                 isLocked
@@ -1597,12 +1940,12 @@ export default function RoomLayout({ roomCode, initialRoom }) {
             >
               {isLocked ? (
                 <>
-                  <Lock className="h-3.5 w-3.5 text-rose-400" />
+                  <Lock className="h-3.5 w-3.5 text-[#f5ede3]" />
                   <span className="hidden sm:inline">Phòng đã khóa</span>
                 </>
               ) : (
                 <>
-                  <Unlock className="h-3.5 w-3.5 text-zinc-400" />
+                  <Unlock className="h-3.5 w-3.5 text-[#c3a47b]" />
                   <span className="hidden sm:inline">Khóa phòng</span>
                 </>
               )}
@@ -1621,10 +1964,10 @@ export default function RoomLayout({ roomCode, initialRoom }) {
             type="button"
             onClick={handleToggleTitle}
             id="btn-toggle-title-header"
-            className="gap-1.5 text-xs transition-colors"
+            className="gap-1.5 text-xs border-[#3a3128] transition-colors"
             title={showTitle ? "Tắt hiển thị danh hiệu của bạn" : "Bật hiển thị danh hiệu của bạn"}
           >
-            <Award className={cn("h-3.5 w-3.5", showTitle ? "text-amber-400" : "text-zinc-400")} />
+            <Award className={cn("h-3.5 w-3.5", showTitle ? "text-[#c3a47b]" : "text-[#75695e]")} />
             <span className="hidden sm:inline">
               {showTitle ? "Danh hiệu: Bật" : "Danh hiệu: Tắt"}
             </span>
@@ -1636,17 +1979,17 @@ export default function RoomLayout({ roomCode, initialRoom }) {
             type="button"
             onClick={handleCopyLink}
             id="btn-copy-room-link"
-            className="hidden gap-1.5 sm:inline-flex"
+            className="hidden gap-1.5 sm:inline-flex border-[#3a3128] text-[#d8c8b4] hover:text-[#f5ede3] hover:bg-[#201b18]"
             aria-label="Sao chép liên kết phòng"
           >
             {copiedLink ? (
               <>
-                <Check className="h-3.5 w-3.5 text-emerald-400" strokeWidth={2} />
+                <Check className="h-3.5 w-3.5 text-[#c3a47b]" strokeWidth={2} />
                 Đã sao chép
               </>
             ) : (
               <>
-                <Link2 className="h-3.5 w-3.5" strokeWidth={ICON_STROKE} />
+                <Link2 className="h-3.5 w-3.5 text-[#c3a47b]" strokeWidth={ICON_STROKE} />
                 Sao chép liên kết
               </>
             )}
@@ -1659,11 +2002,34 @@ export default function RoomLayout({ roomCode, initialRoom }) {
             type="button"
             onClick={() => setIsQRModalOpen(true)}
             id="btn-room-qr-code"
-            className="gap-1.5 text-xs text-zinc-300 hover:text-white"
+            className="gap-1.5 text-xs border-[#3a3128] text-[#d8c8b4] hover:text-[#f5ede3] hover:bg-[#201b18]"
             title="Mã QR mời vào phòng"
           >
-            <QrCode className="h-3.5 w-3.5 text-amber-400" strokeWidth={1.75} />
+            <QrCode className="h-3.5 w-3.5 text-[#c3a47b]" strokeWidth={1.75} />
             <span className="hidden sm:inline">Mã QR</span>
+          </Button>
+
+          {/* Nút chuyển đổi giao diện Sáng / Tối */}
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={() => setTheme(isDark ? "light" : "dark")}
+            id="btn-toggle-room-theme"
+            className="gap-1.5 text-xs border-stone-300 text-stone-700 hover:bg-stone-200 dark:border-[#3a3128] dark:text-[#d8c8b4] dark:hover:text-[#f5ede3] dark:hover:bg-[#201b18] transition-colors"
+            title={isDark ? "Chuyển sang chế độ Sáng" : "Chuyển sang chế độ Tối"}
+          >
+            {isDark ? (
+              <>
+                <Sun className="h-3.5 w-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Sáng</span>
+              </>
+            ) : (
+              <>
+                <Moon className="h-3.5 w-3.5 text-indigo-500" />
+                <span className="hidden sm:inline">Tối</span>
+              </>
+            )}
           </Button>
 
           {/* Chuông thông báo hoạt động phòng học (tin nhắn, file, giơ tay, yêu cầu vào phòng) */}
@@ -1671,6 +2037,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
             roomCode={roomCode}
             currentUserId={currentUserId}
             isHost={isHost}
+            onAddToast={addToast}
             onOpenChat={() => {
               setPanelTab("chat");
               setPanelOpen(true);
@@ -1695,6 +2062,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
             type="button"
             onClick={() => setPanelOpen(true)}
             id="btn-open-panel"
+            className="border border-stone-300 bg-[#EAE3D5] text-[#2D241E] hover:bg-stone-200 dark:border-[#3a3128] dark:bg-[#201b18] dark:text-[#d8c8b4] dark:hover:bg-[#26201c] dark:hover:text-[#f5ede3]"
           >
             Panel
           </Button>
@@ -1722,11 +2090,23 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       {/* Vùng video chính */}
       <main className="relative min-h-0 flex-1 overflow-hidden">
         <div className="mx-auto flex h-full w-full max-w-6xl flex-col p-3 pb-20 sm:p-4 sm:pb-24">
-          <LiveKitVideoStage
-            members={members}
-            speakingId={speakingId}
-            onScreenShareStateChange={setScreenSharing}
-          />
+          {room?.category === "chess" || room?.type === "chess" ? (
+            <ChessStage
+              room={room}
+              members={members}
+              currentUser={currentUser}
+              socket={socketRef.current}
+              speakingId={speakingId}
+              isHost={isHost}
+              onAddToast={addToast}
+            />
+          ) : (
+            <LiveKitVideoStage
+              members={members}
+              speakingId={speakingId}
+              onScreenShareStateChange={setScreenSharing}
+            />
+          )}
         </div>
       </main>
 
@@ -1755,6 +2135,8 @@ export default function RoomLayout({ roomCode, initialRoom }) {
         isHandRaised={isHandRaised}
         onToggleHand={handleToggleHand}
         onSendReaction={handleSendReaction}
+        isHost={isHost}
+        participantsCount={members.length}
       />
 
       {/* Bảng vẽ chung (Whiteboard Overlay Modal) */}
@@ -1803,6 +2185,10 @@ export default function RoomLayout({ roomCode, initialRoom }) {
         onUnpinItem={handleUnpinItem}
         onCreatePoll={handleCreatePoll}
         onVotePoll={handleVotePoll}
+        onLockPoll={handleLockPoll}
+        onRecallPoll={handleRecallPoll}
+        onAddOptionPoll={handleAddOptionPoll}
+        onAddToast={addToast}
       />
 
       {/* Hiệu ứng thả cảm xúc bay lượn trên màn hình (Floating Emoji Reactions) */}
@@ -1824,13 +2210,13 @@ export default function RoomLayout({ roomCode, initialRoom }) {
 
       {/* Banner thông báo kết thúc phiên họp khi người dùng đang giữ bảng chép lời */}
       {isSessionEnded && transcriptionOn && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-full border border-amber-500/40 bg-zinc-950/92 px-4 py-2 shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-4">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-full border border-amber-500/40 bg-zinc-950/92 px-4 py-2 shadow-2xl backdrop-blur-sm animate-in fade-in slide-in-from-top-4">
           <span className="flex h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
           <span className="text-xs text-zinc-200">
             Phiên học đã kết thúc. Bản chép lời của bạn đã được bảo toàn ở góc phải.
           </span>
           <button
-            onClick={() => router.push("/dashboard")}
+            onClick={() => router.push("/dashboard?book=rooms")}
             className="rounded-full bg-amber-500 hover:bg-amber-400 px-3 py-1 text-xs font-semibold text-zinc-950 transition"
           >
             Về sảnh chính

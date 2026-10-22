@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   FileText,
@@ -19,18 +19,51 @@ export function GlobalNotificationToast() {
   const router = useRouter();
   const [toasts, setToasts] = useState([]);
 
+  const recentToastsRef = useRef(new Set());
+
   const addToast = useCallback((notification) => {
-    if (!notification || !notification._id) return;
+    if (!notification) return;
+    const notifId = notification._id || notification.id;
+    const senderId = String(
+      notification.senderId ||
+      notification.sender?._id ||
+      notification.sender?.id ||
+      notification.sender ||
+      notification.from?._id ||
+      ""
+    );
+    const dedupKey =
+      notification.dedupKey ||
+      (notifId ? String(notifId) : `${notification.type}_${senderId}`);
+
+    // Chống trùng lặp tuyệt đối trong vòng 4 giây
+    if (dedupKey && recentToastsRef.current.has(dedupKey)) {
+      return;
+    }
+    if (dedupKey) {
+      recentToastsRef.current.add(dedupKey);
+      setTimeout(() => {
+        recentToastsRef.current.delete(dedupKey);
+      }, 4000);
+    }
 
     setToasts((prev) => {
-      // Tránh trùng lặp toast cùng ID
-      if (prev.some((t) => t._id === notification._id)) return prev;
+      // Tránh trùng lặp toast cùng ID hoặc dedupKey
+      const exists = prev.some((t) => {
+        if (notifId && (t._id === notifId || t.id === notifId)) return true;
+        if (dedupKey && (t.dedupKey === dedupKey || t._id === dedupKey || t.id === dedupKey)) return true;
+        return false;
+      });
+      if (exists) return prev;
       return [
         {
           ...notification,
+          _id: notifId,
+          id: notifId,
+          dedupKey,
           toastId: `toast_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         },
-        ...prev.slice(0, 3), // Tối đa 3 toast nổi cùng lúc
+        ...prev.slice(0, 2), // Tối đa 3 toast nổi cùng lúc
       ];
     });
 
@@ -100,6 +133,21 @@ export function GlobalNotificationToast() {
       ) {
         return;
       }
+
+      // Không hiển thị toast nếu thông báo do chính mình tạo ra
+      const currentU = getStoredUser();
+      const currentUId = String(currentU?._id || currentU?.id || "");
+      const senderId = String(
+        notification.senderId ||
+        notification.sender?._id ||
+        notification.sender?.id ||
+        notification.from?._id ||
+        ""
+      );
+      if (currentUId && senderId && currentUId === senderId) {
+        return;
+      }
+
       addToast(notification);
     };
 
@@ -150,39 +198,39 @@ function ToastItem({ toast, onClose, onClick }) {
   const getTypeIcon = (type) => {
     switch (type) {
       case "MESSAGE":
-        return <MessageSquare className="h-4 w-4 text-indigo-400" strokeWidth={1.75} />;
+        return <MessageSquare className="h-4 w-4 text-[#c3a47b]" strokeWidth={1.75} />;
       case "FILE_SHARED":
-        return <FileText className="h-4 w-4 text-sky-400" strokeWidth={1.75} />;
+        return <FileText className="h-4 w-4 text-[#e8cca4]" strokeWidth={1.75} />;
       case "ROOM_INVITE":
-        return <DoorOpen className="h-4 w-4 text-emerald-400" strokeWidth={1.75} />;
+        return <DoorOpen className="h-4 w-4 text-[#c3a47b]" strokeWidth={1.75} />;
       case "STREAK_ALERT":
-        return <Flame className="h-4 w-4 text-amber-400" strokeWidth={1.75} />;
+        return <Flame className="h-4 w-4 text-[#c3a47b]" strokeWidth={1.75} />;
       case "SYSTEM":
       default:
-        return <Sparkles className="h-4 w-4 text-purple-400" strokeWidth={1.75} />;
+        return <Sparkles className="h-4 w-4 text-[#e8cca4]" strokeWidth={1.75} />;
     }
   };
 
   const getTypeStyle = (type) => {
     switch (type) {
       case "MESSAGE":
-        return "border-indigo-500/30 bg-indigo-500/10 text-indigo-400";
+        return "border-[#c3a47b]/40 bg-[#c3a47b]/15 text-[#c3a47b]";
       case "FILE_SHARED":
-        return "border-sky-500/30 bg-sky-500/10 text-sky-400";
+        return "border-[#c3a47b]/40 bg-[#c3a47b]/15 text-[#e8cca4]";
       case "ROOM_INVITE":
-        return "border-emerald-500/30 bg-emerald-500/10 text-emerald-400";
+        return "border-[#c3a47b]/40 bg-[#c3a47b]/15 text-[#c3a47b]";
       case "STREAK_ALERT":
-        return "border-amber-500/30 bg-amber-500/10 text-amber-400";
+        return "border-[#c3a47b]/40 bg-[#c3a47b]/15 text-[#c3a47b]";
       case "SYSTEM":
       default:
-        return "border-purple-500/30 bg-purple-500/10 text-purple-400";
+        return "border-[#c3a47b]/40 bg-[#c3a47b]/15 text-[#e8cca4]";
     }
   };
 
   return (
     <div
       role="alert"
-      className="pointer-events-auto group relative flex items-start gap-3 rounded-2xl border border-zinc-200/90 bg-white/95 p-3.5 shadow-2xl backdrop-blur-xl transition-all duration-200 hover:-translate-y-0.5 hover:shadow-zinc-900/20 dark:border-zinc-800/90 dark:bg-zinc-950/95 dark:shadow-black/60 animate-in fade-in slide-in-from-bottom-4"
+      className="pointer-events-auto group relative flex items-start gap-3 rounded-2xl border border-[#3a3128] bg-[#1c1815]/95 p-3.5 shadow-2xl backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 animate-in fade-in slide-in-from-bottom-4"
     >
       {/* Icon hoặc Avatar */}
       <div className="shrink-0 mt-0.5">
@@ -191,10 +239,10 @@ function ToastItem({ toast, onClose, onClick }) {
             <img
               src={toast.sender.avatar}
               alt={toast.sender.name || "sender"}
-              className="h-9 w-9 rounded-xl object-cover border border-zinc-200 dark:border-zinc-800"
+              className="h-9 w-9 rounded-xl object-cover border border-[#3a3128]"
             />
             <span
-              className={`absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border border-white dark:border-zinc-950 ${getTypeStyle(
+              className={`absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border border-[#1c1815] ${getTypeStyle(
                 toast.type
               )}`}
             >
@@ -218,19 +266,19 @@ function ToastItem({ toast, onClose, onClick }) {
         className="flex-1 min-w-0 cursor-pointer pr-5"
       >
         <div className="flex items-center gap-1.5">
-          <h5 className="truncate text-xs font-semibold text-zinc-900 dark:text-zinc-100">
+          <h5 className="truncate text-xs font-serif font-semibold text-[#f5ede3]">
             {toast.title || "Thông báo mới"}
           </h5>
-          <span className="shrink-0 rounded-full bg-blue-500/15 px-1.5 py-0.2 text-[9px] font-medium text-blue-600 dark:text-blue-400">
+          <span className="shrink-0 rounded-full bg-[#c3a47b]/20 px-1.5 py-0.2 text-[9px] font-medium text-[#e8cca4]">
             Mới
           </span>
         </div>
-        <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300">
+        <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-[#a89b8d]">
           {toast.message}
         </p>
 
         {toast.link && (
-          <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 group-hover:underline">
+          <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-[#c3a47b] group-hover:underline">
             <span>Mở liên kết</span>
             <ExternalLink className="h-3 w-3" strokeWidth={1.5} />
           </div>
@@ -244,14 +292,14 @@ function ToastItem({ toast, onClose, onClick }) {
           onClose();
         }}
         aria-label="Đóng thông báo"
-        className="absolute top-2.5 right-2.5 flex h-6 w-6 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+        className="absolute top-2.5 right-2.5 flex h-6 w-6 items-center justify-center rounded-lg text-[#75695e] transition hover:bg-[#26201c] hover:text-[#f5ede3]"
       >
         <X className="h-3.5 w-3.5" strokeWidth={1.75} />
       </button>
 
       {/* Thanh tiến trình thời gian tự tắt */}
-      <div className="absolute bottom-0 left-3 right-3 h-[2px] overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800/80">
-        <div className="h-full bg-blue-500/60 animate-[shrinkProgress_6s_linear_forwards]" />
+      <div className="absolute bottom-0 left-3 right-3 h-[2px] overflow-hidden rounded-full bg-[#201b18]">
+        <div className="h-full bg-[#c3a47b]/60 animate-[shrinkProgress_6s_linear_forwards]" />
       </div>
     </div>
   );

@@ -44,6 +44,7 @@ router.post("/google", googleLogin);
 
 // Thông tin cá nhân & Đổi mật khẩu
 router.get("/me", protect, getMe);
+router.get("/profile", protect, getMe);
 router.put("/profile", protect, updateProfileValidation, updateProfile);
 router.put("/change-password", protect, changePasswordValidation, changePassword);
 router.post("/change-password", protect, changePasswordValidation, changePassword);

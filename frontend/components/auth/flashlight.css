@@ -1,0 +1,134 @@
+/* ==========================================================================
+   FLASHLIGHT PASSWORD REVEAL & OWL MASCOT STYLES (DARK ACADEMIA THEME)
+   ========================================================================== */
+
+/* Flash Beam & Floating Torch: Đã loại bỏ hoàn toàn để không còn bất kỳ đèn pin hay vệt sáng trôi dạt nào */
+.flash-beam,
+.flashlight {
+  display: none !important;
+}
+
+/* ==========================================================================
+   OWL MASCOT (Linh vật Con Cú học giả thức đêm học tập)
+   - Đậu ngay ngắn ở góc trên bên phải của nhãn Email (Label bar)
+   - Kích thước vừa phải, position relative, không trôi nổi đè lên ô input
+   ========================================================================== */
+
+.email-owl {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 42px;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
+  transition: opacity 280ms ease, filter 280ms ease;
+  user-select: none;
+}
+
+.owl-art {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 96px;
+  height: 112px;
+  transform: scale(0.375);
+  transform-origin: top left;
+}
+
+.owl-art img,
+.owl-breath,
+.owl-head,
+.owl-eyes,
+.owl-gaze {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.owl-art img {
+  display: block;
+}
+
+.owl-breath {
+  transform-origin: 48px 96px;
+  animation: owl-breathe 4s ease-in-out infinite;
+}
+
+.owl-head {
+  transform-origin: 48px 48px;
+  transform: translate(var(--owl-head-x, 0px), var(--owl-head-y, 0px)) rotate(var(--owl-tilt, 0deg));
+  transition: transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.owl-gaze {
+  transform: translate(var(--owl-gaze-x, 0px), var(--owl-gaze-y, 0px));
+  transition: transform 200ms ease-out;
+}
+
+.owl-eyes {
+  transform-origin: 48px 40px;
+}
+
+/* Daytime resting/dozing state for Owl Mascot */
+.email-owl.owl-daytime .owl-eyes {
+  transform: scaleY(0.24);
+  transform-origin: 48px 40px;
+  transition: transform 600ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.email-owl.owl-daytime .owl-gaze {
+  opacity: 0.35;
+  transition: opacity 600ms ease;
+}
+
+.email-owl.owl-daytime .owl-breath {
+  animation: owl-day-breathe 5.2s ease-in-out infinite;
+}
+
+/* Khi bị chùm sáng đèn pin quét trúng */
+.email-owl.is-lit {
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 14px rgba(255, 230, 150, 0.9));
+}
+
+.email-owl.is-lit .owl-eyes {
+  transform: scaleY(1);
+  animation: owl-blink 5s ease-in-out infinite;
+}
+
+@keyframes owl-day-breathe {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-0.8px) scale(1.012, 1.018);
+  }
+}
+
+@keyframes owl-breathe {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-1.2px) scale(1.02, 1.028);
+  }
+}
+
+@keyframes owl-blink {
+  0%, 40%, 44%, 87%, 91%, 100% {
+    transform: scaleY(1);
+  }
+  42%, 89% {
+    transform: scaleY(0.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .email-owl * {
+    animation: none !important;
+    transition: none !important;
+  }
+  .flash-beam {
+    filter: none !important;
+  }
+}

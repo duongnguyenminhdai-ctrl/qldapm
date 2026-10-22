@@ -40,16 +40,16 @@ export function VideoTile({
   return (
     <div
       className={cn(
-        "video-frame group relative overflow-hidden rounded-xl border border-zinc-800/60 bg-zinc-900 transition duration-200",
-        isSpeaking && "border-zinc-500/80 ring-1 ring-zinc-500/30",
-        isHandRaised && "border-amber-500/80 ring-2 ring-amber-400/50 hand-raised-glow",
+        "video-frame group relative overflow-hidden rounded-xl border border-[#2d2620] bg-[#1c1815] transition duration-200",
+        isSpeaking && "border-[#c3a47b] ring-1 ring-[#c3a47b]/40",
+        isHandRaised && "border-[#c3a47b] ring-2 ring-[#c3a47b]/50 hand-raised-glow",
         className
       )}
     >
       {/* Badge Giơ tay phát biểu nổi bật góc trên bên phải */}
       {isHandRaised && (
-        <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5 rounded-full border border-amber-500/60 bg-amber-500/25 px-2.5 py-1 text-xs font-semibold text-amber-300 shadow-lg shadow-amber-500/20 backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
-          <Hand className="h-3.5 w-3.5 text-amber-400 animate-pulse" strokeWidth={2.2} />
+        <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5 rounded-full border border-[#c3a47b]/60 bg-[#c3a47b]/25 px-2.5 py-1 text-xs font-semibold text-[#e8cca4] shadow-lg shadow-[#c3a47b]/20 backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
+          <Hand className="h-3.5 w-3.5 text-[#c3a47b] animate-pulse" strokeWidth={2.2} />
           <span className="text-[11px] font-medium tracking-tight">Giơ tay</span>
         </div>
       )}
@@ -63,13 +63,13 @@ export function VideoTile({
 
       <div
         className={cn(
-          "absolute inset-x-0 top-0 z-10 h-0.5 bg-zinc-200 transition-opacity duration-taste ease-taste",
+          "absolute inset-x-0 top-0 z-10 h-0.5 bg-[#c3a47b] transition-opacity duration-taste ease-taste",
           isSpeaking ? "opacity-100" : "opacity-0"
         )}
         aria-hidden
       />
 
-      <div className="absolute inset-0 flex items-center justify-center bg-zinc-900">
+      <div className="absolute inset-0 flex items-center justify-center bg-[#ECE5DA] dark:bg-[#1c1815]">
         {member.cameraOn && hasLiveTrack ? (
           <VideoTrack
             trackRef={member.trackRef}
@@ -80,11 +80,11 @@ export function VideoTile({
             style={member.isYou ? { transform: "scaleX(-1)" } : undefined}
           />
         ) : (
-          <div className="flex flex-col items-center gap-2 text-zinc-500">
+          <div className="flex flex-col items-center gap-2 text-[#8C7E72] dark:text-[#75695e]">
             <div className="relative">
-              <Avatar className="h-14 w-14 sm:h-16 sm:w-16">
+              <Avatar className="h-14 w-14 sm:h-16 sm:w-16 border border-stone-300 dark:border-[#3a3128]">
                 <AvatarImage src={member.avatar} alt="" />
-                <AvatarFallback className="bg-zinc-800 text-sm font-medium text-zinc-300">
+                <AvatarFallback className="bg-[#DCD4C4] dark:bg-[#201b18] text-sm font-medium text-[#2D241E] dark:text-[#f5ede3]">
                   {initialsFrom(member.name)}
                 </AvatarFallback>
               </Avatar>
@@ -95,7 +95,7 @@ export function VideoTile({
               )}
             </div>
             {!member.cameraOn && (
-              <span className={cn("text-[11px] text-zinc-500", focusStatus && "mt-1.5")}>
+              <span className={cn("text-[11px] text-[#8C7E72] dark:text-[#75695e]", focusStatus && "mt-1.5")}>
                 Camera tắt
               </span>
             )}
@@ -103,7 +103,7 @@ export function VideoTile({
         )}
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-zinc-950/80 to-transparent px-3 pb-3 pt-8">
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#FAF8F5]/90 dark:from-[#141210]/90 to-transparent px-3 pb-3 pt-8">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             {/* Hiển thị danh hiệu nếu chính thành viên đó đang bật */}
@@ -117,7 +117,7 @@ export function VideoTile({
                 />
               </div>
             )}
-            <p className="truncate text-sm font-medium text-zinc-100">
+            <p className="truncate text-sm font-medium text-[#2D241E] dark:text-zinc-100">
               {member.name}
               {member.isYou ? " (Bạn)" : ""}
             </p>
@@ -125,8 +125,8 @@ export function VideoTile({
           </div>
           <span
             className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-800/60 bg-zinc-950/50 text-zinc-400",
-              !member.micOn && "text-zinc-600"
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-stone-300/80 bg-[#FAF8F5]/80 text-[#615247] dark:border-zinc-800/60 dark:bg-zinc-950/50 dark:text-zinc-400",
+              !member.micOn && "text-stone-400 dark:text-zinc-600"
             )}
             aria-label={member.micOn ? "Mic bật" : "Mic tắt"}
           >

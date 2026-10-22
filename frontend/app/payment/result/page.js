@@ -63,74 +63,74 @@ function PaymentResultContent() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+    <div className="min-h-[100dvh] bg-[#141210] flex items-center justify-center p-4 text-[#a89b8d]">
       <div className="w-full max-w-md">
         {status === "loading" && (
           <div className="text-center space-y-4">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-zinc-800 border border-zinc-700">
-              <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-[#201b18] border border-[#3a3128]">
+              <Loader2 className="w-8 h-8 text-[#c3a47b] animate-spin" />
             </div>
-            <h2 className="text-xl font-semibold text-zinc-100">
+            <h2 className="text-xl font-serif font-semibold text-[#f5ede3]">
               Đang xác nhận giao dịch...
             </h2>
-            <p className="text-sm text-zinc-500">Vui lòng chờ trong giây lát</p>
+            <p className="text-sm text-[#75695e]">Vui lòng chờ trong giây lát</p>
           </div>
         )}
 
         {status === "success" && (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 text-center space-y-6">
+          <div className="bg-[#201b18] border border-[#3a3128] rounded-2xl p-8 text-center space-y-6 shadow-2xl">
             {/* Icon */}
             <div className="relative inline-flex">
-              <div className="w-20 h-20 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                <CheckCircle className="w-10 h-10 text-emerald-400" />
+              <div className="w-20 h-20 rounded-full bg-[#c3a47b]/15 border border-[#c3a47b]/40 flex items-center justify-center">
+                <CheckCircle className="w-10 h-10 text-[#c3a47b]" />
               </div>
-              <div className="absolute -top-1 -right-1 w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center">
-                <Crown className="w-4 h-4 text-white" />
+              <div className="absolute -top-1 -right-1 w-7 h-7 rounded-full bg-[#c3a47b] flex items-center justify-center shadow">
+                <Crown className="w-4 h-4 text-[#161311]" />
               </div>
             </div>
 
             {/* Title */}
             <div>
-              <h1 className="text-2xl font-bold text-zinc-50 mb-1">
+              <h1 className="text-2xl font-serif font-bold text-[#f5ede3] mb-1">
                 Nâng cấp thành công!
               </h1>
-              <p className="text-zinc-400 text-sm">
+              <p className="text-[#a89b8d] text-sm">
                 Tài khoản của bạn đã được nâng lên hạng{" "}
-                <span className="text-amber-400 font-semibold">VIP</span>
+                <span className="text-[#e8cca4] font-semibold">VIP</span>
               </p>
             </div>
 
             {/* Details */}
-            <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-4 space-y-3 text-left">
+            <div className="bg-[#181513] border border-[#3a3128] rounded-xl p-4 space-y-3 text-left">
               <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Mã đơn hàng</span>
-                <span className="text-zinc-300 font-mono text-xs">{orderId}</span>
+                <span className="text-[#75695e]">Mã đơn hàng</span>
+                <span className="text-[#f5ede3] font-mono text-xs">{orderId}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Gói</span>
-                <span className="text-zinc-300">Pro 30 ngày</span>
+                <span className="text-[#75695e]">Gói</span>
+                <span className="text-[#f5ede3]">Pro 30 ngày</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Số tiền</span>
-                <span className="text-zinc-300">99,000 ₫</span>
+                <span className="text-[#75695e]">Số tiền</span>
+                <span className="text-[#f5ede3]">99,000 ₫</span>
               </div>
               {proExpiresAt && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-zinc-500">Hết hạn</span>
-                  <span className="text-emerald-400">{formatDate(proExpiresAt)}</span>
+                  <span className="text-[#75695e]">Hết hạn</span>
+                  <span className="text-[#c3a47b] font-medium">{formatDate(proExpiresAt)}</span>
                 </div>
               )}
             </div>
 
             {/* Benefits */}
-            <div className="bg-gradient-to-r from-violet-500/10 to-amber-500/10 border border-violet-500/20 rounded-xl p-4 text-left space-y-2">
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">
+            <div className="bg-gradient-to-r from-[#c3a47b]/15 to-[#201b18] border border-[#c3a47b]/30 rounded-xl p-4 text-left space-y-2">
+              <p className="text-xs font-semibold text-[#e8cca4] uppercase tracking-wider mb-3">
                 Quyền lợi đã mở khóa
               </p>
               {["Chép lời cuộc họp (Live Transcription)", "Huy hiệu VIP trong phòng học", "Ưu tiên hỗ trợ"].map(
                 (benefit) => (
-                  <div key={benefit} className="flex items-center gap-2 text-sm text-zinc-300">
-                    <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                  <div key={benefit} className="flex items-center gap-2 text-sm text-[#d8c8b4]">
+                    <CheckCircle className="w-4 h-4 text-[#c3a47b] flex-shrink-0" />
                     {benefit}
                   </div>
                 )
@@ -139,7 +139,7 @@ function PaymentResultContent() {
 
             <button
               onClick={() => router.push("/dashboard")}
-              className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-medium text-sm transition-colors"
+              className="w-full py-3 rounded-xl bg-[#c3a47b] hover:bg-[#d6b88f] text-[#161311] font-semibold text-sm transition-colors shadow-md"
             >
               Vào Dashboard
             </button>
@@ -147,16 +147,16 @@ function PaymentResultContent() {
         )}
 
         {(status === "failed" || status === "invalid") && (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 text-center space-y-6">
-            <div className="w-20 h-20 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto">
-              <XCircle className="w-10 h-10 text-red-400" />
+          <div className="bg-[#201b18] border border-[#3a3128] rounded-2xl p-8 text-center space-y-6 shadow-2xl">
+            <div className="w-20 h-20 rounded-full bg-[#8b2626]/20 border border-[#8b2626]/40 flex items-center justify-center mx-auto">
+              <XCircle className="w-10 h-10 text-rose-400" />
             </div>
 
             <div>
-              <h1 className="text-2xl font-bold text-zinc-50 mb-1">
+              <h1 className="text-2xl font-serif font-bold text-[#f5ede3] mb-1">
                 Thanh toán thất bại
               </h1>
-              <p className="text-zinc-400 text-sm">
+              <p className="text-[#a89b8d] text-sm">
                 {status === "invalid"
                   ? "Liên kết không hợp lệ hoặc đã hết hạn."
                   : "Giao dịch không thành công. Bạn chưa bị trừ tiền."}
@@ -164,10 +164,10 @@ function PaymentResultContent() {
             </div>
 
             {orderId && (
-              <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-4">
+              <div className="bg-[#181513] border border-[#3a3128] rounded-xl p-4">
                 <div className="flex justify-between text-sm">
-                  <span className="text-zinc-500">Mã đơn hàng</span>
-                  <span className="text-zinc-300 font-mono text-xs">{orderId}</span>
+                  <span className="text-[#75695e]">Mã đơn hàng</span>
+                  <span className="text-[#f5ede3] font-mono text-xs">{orderId}</span>
                 </div>
               </div>
             )}
@@ -175,7 +175,7 @@ function PaymentResultContent() {
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => router.push("/dashboard")}
-                className="w-full py-3 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-white font-medium text-sm transition-colors flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-xl border border-[#3a3128] bg-[#181513] hover:bg-[#26201c] text-[#f5ede3] font-medium text-sm transition-colors flex items-center justify-center gap-2"
               >
                 <ArrowLeft className="w-4 h-4" />
                 Về Dashboard
@@ -192,8 +192,8 @@ export default function PaymentResultPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
+        <div className="min-h-[100dvh] bg-[#141210] flex items-center justify-center">
+          <Loader2 className="w-8 h-8 text-[#c3a47b] animate-spin" />
         </div>
       }
     >

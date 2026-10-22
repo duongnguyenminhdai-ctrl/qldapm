@@ -88,7 +88,7 @@ export function WaitingLobby({ room, roomCode, user, onApproved }) {
       setIsRejected(true);
       setRejectionMessage(message || "Yêu cầu tham gia phòng của bạn đã bị từ chối.");
       setTimeout(() => {
-        router.push("/dashboard");
+        router.push("/dashboard?book=rooms");
       }, 3000);
     };
 
@@ -97,7 +97,7 @@ export function WaitingLobby({ room, roomCode, user, onApproved }) {
         setIsRejected(true);
         setRejectionMessage(message || "Yêu cầu tham gia phòng của bạn đã bị từ chối.");
         setTimeout(() => {
-          router.push("/dashboard");
+          router.push("/dashboard?book=rooms");
         }, 3000);
       }
     };
@@ -121,41 +121,41 @@ export function WaitingLobby({ room, roomCode, user, onApproved }) {
     if (socket && socket.connected && roomCode && userId) {
       socket.emit("room:cancel-join-request", { roomCode, userId });
     }
-    router.push("/dashboard");
+    router.push("/dashboard?book=rooms");
   };
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-zinc-950 px-6 py-12 text-zinc-100">
+    <div className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-[#FAF8F5] dark:bg-[#141210] px-6 py-12 text-[#615247] dark:text-[#a89b8d]">
       {/* Background Ambient Glows */}
-      <div className="pointer-events-none absolute -top-40 -left-40 h-96 w-96 rounded-full bg-amber-500/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-emerald-500/10 blur-3xl" />
+      <div className="pointer-events-none absolute -top-40 -left-40 h-96 w-96 rounded-full bg-[#c3a47b]/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-[#c3a47b]/5 blur-3xl" />
 
       {/* Main Glassmorphic Card */}
-      <div className="relative z-10 w-full max-w-md rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-8 shadow-2xl backdrop-blur-2xl">
+      <div className="relative z-10 w-full max-w-md rounded-2xl border border-stone-200 bg-[#F7F4EB] dark:border-[#3a3128] dark:bg-[#201b18] p-8 shadow-2xl backdrop-blur-sm">
         {/* Animated Icon Header */}
         <div className="mx-auto mb-6 flex flex-col items-center">
-          <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl border border-amber-500/30 bg-amber-500/10 shadow-lg shadow-amber-500/5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-3xl bg-amber-400/10 opacity-75" />
+          <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl border border-[#c3a47b]/30 bg-[#c3a47b]/10 shadow-lg shadow-[#c3a47b]/5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-3xl bg-[#c3a47b]/10 opacity-75" />
             {isRejected ? (
               <ShieldCheck className="h-10 w-10 text-rose-400" strokeWidth={1.75} />
             ) : (
-              <Hourglass className="h-10 w-10 text-amber-400 animate-[spin_10s_linear_infinite]" strokeWidth={1.75} />
+              <Hourglass className="h-10 w-10 text-[#c3a47b] animate-[spin_10s_linear_infinite]" strokeWidth={1.75} />
             )}
           </div>
 
-          <div className="mt-4 flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+          <div className="mt-4 flex items-center gap-1.5 rounded-full border border-[#c3a47b]/30 bg-[#c3a47b]/10 px-3 py-1 text-xs font-medium text-[#966f38] dark:text-[#e8cca4]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#c3a47b] animate-pulse" />
             <span>Phòng chờ xét duyệt</span>
           </div>
         </div>
 
         {/* Content Body */}
         <div className="space-y-3 text-center">
-          <h1 className="text-xl font-bold tracking-tight text-zinc-100 sm:text-2xl">
+          <h1 className="text-xl font-serif font-bold tracking-tight text-[#2D241E] dark:text-[#f5ede3] sm:text-2xl">
             {displayTitle}
           </h1>
 
-          <p className="font-mono text-xs text-zinc-500">Mã phòng: {roomCode}</p>
+          <p className="font-mono text-xs text-[#966f38] dark:text-[#c3a47b]/80">Mã phòng: {roomCode}</p>
 
           {isRejected ? (
             <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-4 text-sm text-rose-300 animate-in fade-in">
@@ -166,13 +166,13 @@ export function WaitingLobby({ room, roomCode, user, onApproved }) {
             </div>
           ) : (
             <div className="space-y-2">
-              <p className="text-sm leading-relaxed text-zinc-300">
+              <p className="text-sm leading-relaxed text-[#615247] dark:text-[#a89b8d]">
                 Đang chờ chủ phòng phê duyệt... Bạn sẽ tự động được đưa vào phòng ngay khi chủ phòng đồng ý.
               </p>
 
               {/* Waiting Timer indicator */}
-              <div className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-1.5 font-mono text-xs text-zinc-400">
-                <Clock className="h-3.5 w-3.5 text-zinc-500" />
+              <div className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-[#ECE5DA] dark:border-[#3a3128] dark:bg-[#141210] px-3 py-1.5 font-mono text-xs text-[#615247] dark:text-[#a89b8d]">
+                <Clock className="h-3.5 w-3.5 text-[#8C7E72] dark:text-[#75695e]" />
                 <span>Thời gian chờ: {formatWaitingTimer(waitingSeconds)}</span>
               </div>
             </div>
@@ -180,13 +180,13 @@ export function WaitingLobby({ room, roomCode, user, onApproved }) {
         </div>
 
         {/* Action Button */}
-        <div className="mt-8 pt-4 border-t border-zinc-800/60">
+        <div className="mt-8 pt-4 border-t border-stone-200 dark:border-[#3a3128]">
           <Button
             type="button"
             variant="outline"
             onClick={handleCancel}
             id="btn-cancel-waiting-room"
-            className="w-full gap-2 border-zinc-700/80 bg-zinc-900/60 text-zinc-200 hover:bg-zinc-800 hover:text-white"
+            className="w-full gap-2 border-stone-200 bg-[#ECE5DA] text-[#2D241E] hover:bg-[#DCD4C4] hover:text-[#1c1815] dark:border-[#3a3128] dark:bg-[#181513] dark:text-[#d8c8b4] dark:hover:bg-[#26201c] dark:hover:text-[#f5ede3]"
           >
             <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
             <span>Hủy và quay lại Dashboard</span>

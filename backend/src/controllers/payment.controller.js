@@ -173,6 +173,7 @@ const vnpayReturn = async (req, res) => {
     const orderId = vnpParams["vnp_TxnRef"];
     const vnpayTransactionNo = vnpParams["vnp_TransactionNo"] || "";
     const bankCode = vnpParams["vnp_BankCode"] || "";
+    const paidAmount = Number(vnpParams["vnp_Amount"]);
 
     const transaction = await Transaction.findOne({ orderId });
     if (!transaction) {
@@ -180,6 +181,15 @@ const vnpayReturn = async (req, res) => {
         success: false,
         message: "Không tìm thấy giao dịch.",
         code: "NOT_FOUND",
+      });
+    }
+
+    // BẢO MẬT: Đối soát số tiền thanh toán từ cổng VNPay so với giá trị đơn hàng
+    if (!paidAmount || paidAmount !== transaction.amount * 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Số tiền thanh toán không khớp với đơn hàng.",
+        code: "AMOUNT_MISMATCH",
       });
     }
 
@@ -197,16 +207,33 @@ const vnpayReturn = async (req, res) => {
     }
 
     if (responseCode === "00") {
-      // Thanh toán thành công
-      transaction.status = "SUCCESS";
-      transaction.vnpayTransactionNo = vnpayTransactionNo;
-      transaction.vnpayResponseCode = responseCode;
-      transaction.bankCode = bankCode;
-      await transaction.save();
+      // Thanh toán thành công: Cập nhật nguyên tử để chống Race Condition khi có request callback đồng thời
+      const updatedTx = await Transaction.findOneAndUpdate(
+        { orderId, status: "PENDING" },
+        {
+          $set: {
+            status: "SUCCESS",
+            vnpayTransactionNo,
+            vnpayResponseCode: responseCode,
+            bankCode,
+          },
+        },
+        { new: true }
+      );
+
+      if (!updatedTx) {
+        const currentTx = await Transaction.findOne({ orderId });
+        return res.status(200).json({
+          success: currentTx?.status === "SUCCESS",
+          message: "Giao dịch đã được xử lý thành công trước đó.",
+          code: currentTx?.status || "SUCCESS",
+          data: { orderId, status: currentTx?.status },
+        });
+      }
 
       // Nâng cấp user lên Pro theo số ngày của gói đã mua (cộng dồn nếu đang còn hạn)
-      const proDays = Number(transaction.days) || parseInt(process.env.VNP_PRO_DAYS || "30", 10);
-      const userDoc = await User.findById(transaction.userId);
+      const proDays = Number(updatedTx.days) || parseInt(process.env.VNP_PRO_DAYS || "30", 10);
+      const userDoc = await User.findById(updatedTx.userId);
       const baseDate =
         userDoc?.isPro && userDoc?.proExpiresAt && new Date(userDoc.proExpiresAt) > new Date()
           ? new Date(userDoc.proExpiresAt)
@@ -214,7 +241,7 @@ const vnpayReturn = async (req, res) => {
 
       const proExpiresAt = new Date(baseDate.getTime() + proDays * 24 * 60 * 60 * 1000);
 
-      await User.findByIdAndUpdate(transaction.userId, {
+      await User.findByIdAndUpdate(updatedTx.userId, {
         isPro: true,
         proExpiresAt,
         title: "VIP",
@@ -232,9 +259,15 @@ const vnpayReturn = async (req, res) => {
       });
     } else {
       // Thanh toán thất bại
-      transaction.status = "FAILED";
-      transaction.vnpayResponseCode = responseCode;
-      await transaction.save();
+      await Transaction.findOneAndUpdate(
+        { orderId, status: "PENDING" },
+        {
+          $set: {
+            status: "FAILED",
+            vnpayResponseCode: responseCode,
+          },
+        }
+      );
 
       return res.status(200).json({
         success: false,
@@ -249,6 +282,90 @@ const vnpayReturn = async (req, res) => {
       success: false,
       message: "Lỗi xử lý callback thanh toán.",
     });
+  }
+};
+
+/* =========================================================
+ * GET /api/payment/vnpay-ipn
+ * Webhook Server-to-Server từ VNPay (chuẩn chính thức VNPay IPN)
+ * ========================================================= */
+const vnpayIpn = async (req, res) => {
+  try {
+    const vnpParams = { ...req.query };
+    const secureHash = vnpParams["vnp_SecureHash"];
+    delete vnpParams["vnp_SecureHash"];
+    delete vnpParams["vnp_SecureHashType"];
+
+    const secretKey = process.env.VNP_HASH_SECRET;
+    const sortedParams = sortObject(vnpParams);
+    const signData = buildSignData(sortedParams);
+    const calcHash = createHmacSha512(secretKey, signData);
+
+    if (!secureHash || calcHash.toLowerCase() !== secureHash.toLowerCase()) {
+      return res.status(200).json({ RspCode: "97", Message: "Checksum failed" });
+    }
+
+    const orderId = vnpParams["vnp_TxnRef"];
+    const responseCode = vnpParams["vnp_ResponseCode"];
+    const vnpayTransactionNo = vnpParams["vnp_TransactionNo"] || "";
+    const bankCode = vnpParams["vnp_BankCode"] || "";
+    const paidAmount = Number(vnpParams["vnp_Amount"]);
+
+    const transaction = await Transaction.findOne({ orderId });
+    if (!transaction) {
+      return res.status(200).json({ RspCode: "01", Message: "Order not found" });
+    }
+
+    if (paidAmount !== transaction.amount * 100) {
+      return res.status(200).json({ RspCode: "04", Message: "Amount invalid" });
+    }
+
+    if (transaction.status !== "PENDING") {
+      return res.status(200).json({ RspCode: "02", Message: "Order already confirmed" });
+    }
+
+    if (responseCode === "00") {
+      const updatedTx = await Transaction.findOneAndUpdate(
+        { orderId, status: "PENDING" },
+        {
+          $set: {
+            status: "SUCCESS",
+            vnpayTransactionNo,
+            vnpayResponseCode: responseCode,
+            bankCode,
+          },
+        },
+        { new: true }
+      );
+
+      if (updatedTx) {
+        const proDays = Number(updatedTx.days) || parseInt(process.env.VNP_PRO_DAYS || "30", 10);
+        const userDoc = await User.findById(updatedTx.userId);
+        const baseDate =
+          userDoc?.isPro && userDoc?.proExpiresAt && new Date(userDoc.proExpiresAt) > new Date()
+            ? new Date(userDoc.proExpiresAt)
+            : new Date();
+
+        const proExpiresAt = new Date(baseDate.getTime() + proDays * 24 * 60 * 60 * 1000);
+
+        await User.findByIdAndUpdate(updatedTx.userId, {
+          isPro: true,
+          proExpiresAt,
+          title: "VIP",
+        });
+      }
+
+      return res.status(200).json({ RspCode: "00", Message: "Confirm Success" });
+    } else {
+      await Transaction.findOneAndUpdate(
+        { orderId, status: "PENDING" },
+        { $set: { status: "FAILED", vnpayResponseCode: responseCode } }
+      );
+      return res.status(200).json({ RspCode: "00", Message: "Confirm Success" });
+    }
+  } catch (error) {
+    console.error("[Payment] vnpayIpn error:", error);
+    return res.status(200).json({ RspCode: "99", Message: "Unknown error" });
   }
 };
 
@@ -305,4 +422,4 @@ const getActivePackages = async (req, res) => {
   }
 };
 
-module.exports = { createPaymentUrl, vnpayReturn, getProStatus, getActivePackages };
+module.exports = { createPaymentUrl, vnpayReturn, vnpayIpn, getProStatus, getActivePackages };

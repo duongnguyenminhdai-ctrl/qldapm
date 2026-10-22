@@ -18,6 +18,7 @@ import {
   ExternalLink,
   ChevronDown,
   Download,
+  Gift,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -174,43 +175,73 @@ export function NotificationBell({ user }) {
         return;
       }
 
-      setUnreadCount((prev) => prev + 1);
       setNotifications((prev) => {
-        if (prev.some((n) => n._id === notif._id)) return prev;
-        return [notif, ...prev];
+        const notifId = notif._id || notif.id;
+        const senderId = String(
+          notif.senderId ||
+          notif.sender?._id ||
+          notif.sender?.id ||
+          notif.from?._id ||
+          ""
+        );
+        const dedupKey = notif.dedupKey || (notifId ? String(notifId) : `${notif.type}_${senderId}`);
+
+        const exists = prev.some((n) => {
+          if (notifId && (n._id === notifId || n.id === notifId)) return true;
+          if (dedupKey && (n.dedupKey === dedupKey || n._id === dedupKey || n.id === dedupKey)) return true;
+          return false;
+        });
+        if (exists) return prev;
+
+        const nextList = [
+          { ...notif, _id: notifId, id: notifId, dedupKey, isRead: false },
+          ...prev,
+        ];
+        // Cập nhật badge unreadCount dựa trên số lượng item có isRead === false thực tế trong mảng
+        const actualUnread = nextList.filter((n) => !n.isRead).length;
+        setUnreadCount(actualUnread);
+        return nextList;
       });
     };
 
     // Nhận lời mời kết bạn mới
     const handleNewFriendRequest = (data) => {
-      if (data && data.from) {
-        triggerBounce();
-        setFriendRequests((prev) => {
-          if (prev.some((r) => String(r.from?._id) === String(data.from._id))) {
-            return prev;
-          }
-          return [data, ...prev];
+      if (!data) return;
+      const senderId = String(data.senderId || data.from?._id || data.from?.id || "");
+      if (senderId && senderId === String(user?.id || user?._id)) return;
+
+      triggerBounce();
+      setFriendRequests((prev) => {
+        const exists = prev.some((r) => {
+          const rId = String(r.senderId || r.from?._id || r.from?.id || r._id || r.id || "");
+          return rId && rId === senderId;
         });
-      }
+        if (exists) return prev;
+        return [data, ...prev];
+      });
     };
 
     socket.on("notification:new", handleNewNotification);
+    socket.on("receive_friend_request", handleNewFriendRequest);
     socket.on("friend:request-received", handleNewFriendRequest);
 
     // Lắng nghe sự kiện đánh dấu đã đọc từ Toast
     const handleExternalRead = (e) => {
       const readId = e?.detail?.id;
       if (readId) {
-        setNotifications((prev) =>
-          prev.map((n) => (n._id === readId ? { ...n, isRead: true } : n))
-        );
-        setUnreadCount((prev) => Math.max(0, prev - 1));
+        setNotifications((prev) => {
+          const nextList = prev.map((n) => (n._id === readId || n.id === readId ? { ...n, isRead: true } : n));
+          const actualUnread = nextList.filter((n) => !n.isRead).length;
+          setUnreadCount(actualUnread);
+          return nextList;
+        });
       }
     };
     window.addEventListener("vsr:notification-read", handleExternalRead);
 
     return () => {
       socket.off("notification:new", handleNewNotification);
+      socket.off("receive_friend_request", handleNewFriendRequest);
       socket.off("friend:request-received", handleNewFriendRequest);
       window.removeEventListener("vsr:notification-read", handleExternalRead);
     };
@@ -317,6 +348,20 @@ export function NotificationBell({ user }) {
   const handleItemClick = async (notif) => {
     setOpen(false);
 
+    if (
+      notif.type === "CARD_REWARD" ||
+      notif.message?.includes("nhận card") ||
+      notif.link?.includes("openCardModal")
+    ) {
+      if (!notif.isRead) {
+        handleMarkAsRead(notif._id);
+      }
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("vsr:open-card-modal"));
+      }
+      return;
+    }
+
     if (notif.type === "TRANSCRIPT") {
       handleDownloadTranscript(notif);
       return;
@@ -382,7 +427,7 @@ export function NotificationBell({ user }) {
     try {
       const res = await friendsApi.acceptRequest(fromUserId);
       setFriendRequests((prev) =>
-        prev.filter((r) => String(r.from?._id) !== String(fromUserId))
+        prev.filter((r) => String(r.from?._id || r.from?.id || r.from) !== String(fromUserId))
       );
       const newFriend = res?.data?.friend;
       if (newFriend && typeof window !== "undefined") {
@@ -391,7 +436,11 @@ export function NotificationBell({ user }) {
         );
       }
     } catch (err) {
-      console.error("[NotificationBell] Lỗi accept friend:", err);
+      console.warn("[NotificationBell] Kết quả chấp nhận kết bạn:", err?.message || err);
+      // Nếu đã được xử lý hoặc có lỗi, vẫn loại bỏ lời mời khỏi danh sách để tránh stuck
+      setFriendRequests((prev) =>
+        prev.filter((r) => String(r.from?._id || r.from?.id || r.from) !== String(fromUserId))
+      );
     } finally {
       setActionLoading((prev) => ({ ...prev, [fromUserId]: null }));
     }
@@ -403,10 +452,13 @@ export function NotificationBell({ user }) {
     try {
       await friendsApi.rejectRequest(fromUserId);
       setFriendRequests((prev) =>
-        prev.filter((r) => String(r.from?._id) !== String(fromUserId))
+        prev.filter((r) => String(r.from?._id || r.from?.id || r.from) !== String(fromUserId))
       );
     } catch (err) {
-      console.error("[NotificationBell] Lỗi reject friend:", err);
+      console.warn("[NotificationBell] Kết quả từ chối kết bạn:", err?.message || err);
+      setFriendRequests((prev) =>
+        prev.filter((r) => String(r.from?._id || r.from?.id || r.from) !== String(fromUserId))
+      );
     } finally {
       setActionLoading((prev) => ({ ...prev, [fromUserId]: null }));
     }
@@ -469,6 +521,8 @@ export function NotificationBell({ user }) {
         return <Flame className="h-4 w-4 text-amber-500" strokeWidth={ICON_STROKE} />;
       case "TRANSCRIPT":
         return <FileText className="h-4 w-4 text-emerald-500" strokeWidth={ICON_STROKE} />;
+      case "CARD_REWARD":
+        return <Gift className="h-4 w-4 text-amber-400" strokeWidth={ICON_STROKE} />;
       case "SYSTEM":
       default:
         return <Sparkles className="h-4 w-4 text-purple-500" strokeWidth={ICON_STROKE} />;
@@ -487,6 +541,8 @@ export function NotificationBell({ user }) {
         return "border-amber-500/20 bg-amber-500/10 text-amber-500";
       case "TRANSCRIPT":
         return "border-emerald-500/20 bg-emerald-500/10 text-emerald-500";
+      case "CARD_REWARD":
+        return "border-amber-500/20 bg-amber-500/10 text-amber-400";
       case "SYSTEM":
       default:
         return "border-purple-500/20 bg-purple-500/10 text-purple-500";
@@ -505,15 +561,15 @@ export function NotificationBell({ user }) {
           }
         }}
         aria-label="Thông báo"
-        className={`relative flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200/80 bg-white/80 text-zinc-600 shadow-sm backdrop-blur-md transition-all duration-200 hover:bg-zinc-100 hover:text-zinc-900 active:scale-95 dark:border-zinc-800/80 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 ${
-          isBouncing ? "animate-bell-bounce text-blue-600 dark:text-blue-400" : ""
+        className={`relative flex h-9 w-9 items-center justify-center rounded-xl border border-amber-200/80 dark:border-[#3a3128] bg-white dark:bg-[#201b18] text-[#2D241E] dark:text-[#d8c8b4] shadow-sm backdrop-blur-md transition-all duration-200 hover:bg-[#f7f2e8] dark:hover:bg-[#26201c] hover:text-[#2D241E] dark:hover:text-[#f5ede3] active:scale-95 ${
+          isBouncing ? "animate-bell-bounce text-amber-600 dark:text-[#c3a47b]" : ""
         }`}
       >
-        <Bell className="h-4 w-4" strokeWidth={ICON_STROKE} />
+        <Bell className="h-4 w-4 text-[#6e6358] dark:text-[#d8c8b4]" strokeWidth={ICON_STROKE} />
 
         {/* Badge số lượng thông báo chưa đọc */}
         {totalBadgeCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white shadow-sm ring-2 ring-white dark:ring-zinc-950 animate-in zoom-in-75">
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-amber-600 dark:bg-[#c3a47b] px-1 text-[10px] font-bold text-white dark:text-[#161311] shadow-sm ring-2 ring-white dark:ring-[#181513] animate-in zoom-in-75">
             {totalBadgeCount > 9 ? "9+" : totalBadgeCount}
           </span>
         )}
@@ -521,15 +577,15 @@ export function NotificationBell({ user }) {
 
       {/* Popover Dropdown Thông báo */}
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-84 sm:w-96 rounded-2xl border border-zinc-200/90 bg-white/95 p-3.5 shadow-2xl backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-150 dark:border-zinc-800/80 dark:bg-zinc-950/95">
+        <div className="absolute right-0 top-11 z-50 w-84 sm:w-96 rounded-2xl border border-amber-200/80 dark:border-[#3a3128] bg-[#fbf9f5] dark:bg-[#1c1815] p-3.5 shadow-2xl backdrop-blur-sm animate-in fade-in zoom-in-95 duration-150 text-[#2D241E] dark:text-[#f5ede3]">
           {/* Header Popover */}
-          <div className="flex items-center justify-between border-b border-zinc-100 pb-2.5 px-0.5 dark:border-zinc-800/60">
+          <div className="flex items-center justify-between border-b border-amber-200/60 dark:border-[#2d2620] pb-2.5 px-0.5">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+              <h3 className="text-sm font-semibold tracking-tight text-[#2D241E] dark:text-[#f5ede3]">
                 Thông báo
               </h3>
               {activeUnreadCount > 0 && (
-                <span className="flex items-center rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+                <span className="flex items-center rounded-full bg-amber-500/15 dark:bg-[#c3a47b]/20 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-[#e8cca4]">
                   {activeUnreadCount} chưa đọc
                 </span>
               )}
@@ -540,13 +596,13 @@ export function NotificationBell({ user }) {
               <button
                 onClick={handleMarkAllAsRead}
                 disabled={markingAll}
-                className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-200"
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-[#6e6358] dark:text-[#a89b8d] transition hover:bg-amber-100/60 dark:hover:bg-[#26201c] hover:text-[#2D241E] dark:hover:text-[#f5ede3]"
                 title="Đánh dấu đã đọc tất cả"
               >
                 {markingAll ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Loader2 className="h-3 w-3 animate-spin text-amber-600 dark:text-[#c3a47b]" />
                 ) : (
-                  <CheckCheck className="h-3.5 w-3.5 text-blue-500" strokeWidth={1.75} />
+                  <CheckCheck className="h-3.5 w-3.5 text-amber-600 dark:text-[#c3a47b]" strokeWidth={1.75} />
                 )}
                 <span>Đã đọc hết</span>
               </button>
@@ -554,13 +610,13 @@ export function NotificationBell({ user }) {
           </div>
 
           {/* Tab Filter */}
-          <div className="mt-2.5 flex items-center gap-1 rounded-xl bg-zinc-100/80 p-1 dark:bg-zinc-900/80">
+          <div className="mt-2.5 flex items-center gap-1 rounded-xl bg-[#eee5da] dark:bg-[#141210] p-1 border border-amber-200/60 dark:border-[#2d2620]">
             <button
               onClick={() => setActiveTab("all")}
               className={`flex-1 rounded-lg py-1 text-center text-xs font-medium transition ${
                 activeTab === "all"
-                  ? "bg-white text-zinc-900 shadow-xs dark:bg-zinc-800 dark:text-zinc-100"
-                  : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  ? "bg-white dark:bg-[#29231f] text-[#2D241E] dark:text-[#f5ede3] shadow-xs border border-amber-300 dark:border-[#c3a47b]/40"
+                  : "text-[#6e6358] dark:text-[#75695e] hover:text-[#2D241E] dark:hover:text-[#d8c8b4]"
               }`}
             >
               Tất cả
@@ -569,21 +625,21 @@ export function NotificationBell({ user }) {
               onClick={() => setActiveTab("unread")}
               className={`relative flex-1 rounded-lg py-1 text-center text-xs font-medium transition ${
                 activeTab === "unread"
-                  ? "bg-white text-zinc-900 shadow-xs dark:bg-zinc-800 dark:text-zinc-100"
-                  : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  ? "bg-white dark:bg-[#29231f] text-[#2D241E] dark:text-[#f5ede3] shadow-xs border border-amber-300 dark:border-[#c3a47b]/40"
+                  : "text-[#6e6358] dark:text-[#75695e] hover:text-[#2D241E] dark:hover:text-[#d8c8b4]"
               }`}
             >
               Chưa đọc
               {activeUnreadCount > 0 && (
-                <span className="ml-1 inline-flex h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400" />
+                <span className="ml-1 inline-flex h-1.5 w-1.5 rounded-full bg-amber-600 dark:bg-[#c3a47b]" />
               )}
             </button>
             <button
               onClick={() => setActiveTab("friends")}
               className={`relative flex-1 rounded-lg py-1 text-center text-xs font-medium transition ${
                 activeTab === "friends"
-                  ? "bg-white text-zinc-900 shadow-xs dark:bg-zinc-800 dark:text-zinc-100"
-                  : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  ? "bg-white dark:bg-[#29231f] text-[#2D241E] dark:text-[#f5ede3] shadow-xs border border-amber-300 dark:border-[#c3a47b]/40"
+                  : "text-[#6e6358] dark:text-[#75695e] hover:text-[#2D241E] dark:hover:text-[#d8c8b4]"
               }`}
             >
               Kết bạn
@@ -602,10 +658,10 @@ export function NotificationBell({ user }) {
               friendRequests.length === 0 ? (
                 <div className="py-8 text-center">
                   <UserCheck
-                    className="mx-auto h-7 w-7 text-zinc-400 dark:text-zinc-600"
+                    className="mx-auto h-7 w-7 text-[#8C7E72] dark:text-zinc-600"
                     strokeWidth={1.5}
                   />
-                  <p className="mt-2 text-xs text-zinc-500">
+                  <p className="mt-2 text-xs text-[#6e6358] dark:text-zinc-500">
                     Không có lời mời kết bạn nào
                   </p>
                 </div>
@@ -618,32 +674,32 @@ export function NotificationBell({ user }) {
                   return (
                     <div
                       key={sender._id}
-                      className="flex flex-col gap-2 rounded-xl border border-zinc-200/60 bg-zinc-50/70 p-2.5 transition hover:bg-zinc-100 dark:border-zinc-800/50 dark:bg-zinc-900/50 dark:hover:bg-zinc-900"
+                      className="flex flex-col gap-2 rounded-xl border border-amber-200/60 bg-amber-50/50 p-2.5 transition hover:bg-amber-100/40 dark:border-[#3a3128] dark:bg-[#181513]/60 dark:hover:bg-[#1f1b17]"
                     >
                       <div className="flex items-center gap-2.5">
-                        <Avatar className="h-8 w-8 border border-zinc-200 dark:border-zinc-800">
+                        <Avatar className="h-8 w-8 border border-amber-200/80 dark:border-zinc-800">
                           <AvatarImage src={sender.avatar} />
-                          <AvatarFallback className="text-[10px]">
+                          <AvatarFallback className="text-[10px] bg-[#eee5da] dark:bg-zinc-800 text-[#2D241E] dark:text-zinc-200">
                             {sender.name?.slice(0, 2).toUpperCase() || "U"}
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-medium text-zinc-900 dark:text-zinc-200">
+                          <p className="truncate text-xs font-medium text-[#2D241E] dark:text-zinc-200">
                             {sender.name}
                           </p>
-                          <p className="truncate text-[11px] text-zinc-500">
+                          <p className="truncate text-[11px] text-[#6e6358] dark:text-zinc-500">
                             {sender.email}
                           </p>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-zinc-100 dark:border-zinc-800/40">
+                      <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-amber-200/50 dark:border-zinc-800/40">
                         <Button
                           size="sm"
                           variant="ghost"
                           disabled={isLoading}
                           onClick={() => handleRejectFriend(sender._id)}
-                          className="h-7 px-2.5 text-[11px] text-zinc-500 hover:text-rose-600 hover:bg-rose-50 dark:text-zinc-400 dark:hover:text-rose-400 dark:hover:bg-rose-950/30"
+                          className="h-7 px-2.5 text-[11px] text-[#6e6358] hover:text-rose-600 hover:bg-rose-50 dark:text-zinc-400 dark:hover:text-rose-400 dark:hover:bg-rose-950/30"
                         >
                           <X className="mr-1 h-3 w-3" strokeWidth={ICON_STROKE} />
                           Từ chối
@@ -652,7 +708,7 @@ export function NotificationBell({ user }) {
                           size="sm"
                           disabled={isLoading}
                           onClick={() => handleAcceptFriend(sender._id)}
-                          className="h-7 px-2.5 text-[11px]"
+                          className="h-7 px-2.5 text-[11px] bg-amber-600 dark:bg-[#c3a47b] text-white dark:text-[#161311] hover:brightness-105"
                         >
                           {isLoading ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
@@ -671,16 +727,16 @@ export function NotificationBell({ user }) {
             ) : // TAB THÔNG BÁO HOẠT ĐỘNG IN-APP (TẤT CẢ HOẶC CHƯA ĐỌC)
             loading ? (
               <div className="py-8 text-center">
-                <Loader2 className="mx-auto h-5 w-5 animate-spin text-zinc-400" />
-                <p className="mt-2 text-xs text-zinc-500">Đang tải thông báo...</p>
+                <Loader2 className="mx-auto h-5 w-5 animate-spin text-amber-600 dark:text-[#c3a47b]" />
+                <p className="mt-2 text-xs text-[#6e6358] dark:text-[#a89b8d]">Đang tải thông báo...</p>
               </div>
             ) : displayedNotifications.length === 0 ? (
               <div className="py-8 text-center">
                 <Bell
-                  className="mx-auto h-7 w-7 text-zinc-400 dark:text-zinc-600"
+                  className="mx-auto h-7 w-7 text-[#8C7E72] dark:text-zinc-600"
                   strokeWidth={1.5}
                 />
-                <p className="mt-2 text-xs text-zinc-500">
+                <p className="mt-2 text-xs text-[#6e6358] dark:text-[#a89b8d]">
                   {activeTab === "unread"
                     ? "Không có thông báo chưa đọc"
                     : "Không có thông báo nào"}
@@ -697,8 +753,8 @@ export function NotificationBell({ user }) {
                       onClick={() => handleItemClick(notif)}
                       className={`group relative flex items-start gap-2.5 rounded-xl border p-2.5 transition-all cursor-pointer ${
                         isUnread
-                          ? "border-blue-500/25 bg-blue-500/5 hover:bg-blue-500/10 dark:border-blue-500/20 dark:bg-blue-500/10 dark:hover:bg-blue-500/15"
-                          : "border-transparent bg-transparent hover:bg-zinc-100/80 dark:hover:bg-zinc-900/60"
+                          ? "border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/15 dark:border-amber-500/20 dark:bg-amber-500/10 dark:hover:bg-amber-500/15"
+                          : "border-transparent bg-transparent hover:bg-amber-100/50 dark:hover:bg-[#26201c]/60"
                       }`}
                     >
                       {/* Avatar người gửi hoặc icon phân loại */}
@@ -708,7 +764,7 @@ export function NotificationBell({ user }) {
                             <img
                               src={notif.sender.avatar}
                               alt={notif.sender.name || "sender"}
-                              className="h-8 w-8 rounded-xl object-cover border border-zinc-200 dark:border-zinc-800"
+                              className="h-8 w-8 rounded-xl object-cover border border-amber-200/80 dark:border-zinc-800"
                             />
                             <span
                               className={`absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border border-white dark:border-zinc-950 ${getNotificationBadgeStyle(
@@ -735,18 +791,18 @@ export function NotificationBell({ user }) {
                           <h4
                             className={`truncate text-xs leading-tight ${
                               isUnread
-                                ? "font-semibold text-zinc-900 dark:text-zinc-100"
-                                : "font-medium text-zinc-700 dark:text-zinc-300"
+                                ? "font-semibold text-[#2D241E] dark:text-[#f5ede3]"
+                                : "font-medium text-[#4a3f35] dark:text-[#d8c8b4]"
                             }`}
                           >
                             {notif.title}
                           </h4>
-                          <span className="shrink-0 text-[10px] text-zinc-400 dark:text-zinc-500">
+                          <span className="shrink-0 text-[10px] text-[#8C7E72] dark:text-[#75695e]">
                             {formatRelativeTime(notif.createdAt)}
                           </span>
                         </div>
 
-                        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
+                        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#6e6358] dark:text-[#a89b8d]">
                           {notif.message}
                         </p>
 
@@ -792,7 +848,7 @@ export function NotificationBell({ user }) {
                           <button
                             onClick={(e) => handleMarkAsRead(notif._id, e)}
                             title="Đánh dấu đã đọc"
-                            className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-400 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/40 dark:hover:text-blue-400 transition"
+                            className="flex h-5 w-5 items-center justify-center rounded-md text-[#8C7E72] hover:bg-amber-100/60 hover:text-amber-700 dark:hover:bg-[#26201c] dark:hover:text-[#f5ede3] transition"
                           >
                             <Check className="h-3 w-3" strokeWidth={1.75} />
                           </button>
@@ -802,7 +858,7 @@ export function NotificationBell({ user }) {
                             handleDeleteNotification(notif, e)
                           }
                           title="Xóa thông báo"
-                          className="flex h-5 w-5 items-center justify-center rounded-md text-zinc-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 transition"
+                          className="flex h-5 w-5 items-center justify-center rounded-md text-[#8C7E72] hover:bg-rose-100/60 hover:text-rose-600 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 transition"
                         >
                           <Trash2 className="h-3 w-3" strokeWidth={1.5} />
                         </button>
@@ -817,11 +873,11 @@ export function NotificationBell({ user }) {
                     <button
                       onClick={() => fetchNotifications(page + 1, true)}
                       disabled={loadingMore}
-                      className="inline-flex items-center gap-1 text-[11px] font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition"
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-[#6e6358] hover:text-[#2D241E] dark:text-[#a89b8d] dark:hover:text-[#f5ede3] transition"
                     >
                       {loadingMore ? (
                         <>
-                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <Loader2 className="h-3 w-3 animate-spin text-amber-600 dark:text-[#c3a47b]" />
                           <span>Đang tải thêm...</span>
                         </>
                       ) : (

@@ -241,9 +241,15 @@ export function HomeBentoGrid() {
           category,
           isPrivate,
         });
-        const code = result?.data?.room?.roomCode;
+        const room = result?.data?.room;
+        const code = room?.roomCode;
         if (!code) throw new Error("Không nhận được mã phòng.");
-        window.location.assign(`/room/${code}`);
+        try {
+          if (typeof window !== "undefined") {
+            window.sessionStorage.setItem(`vsr_created_room_${code}`, JSON.stringify(room));
+          }
+        } catch (_) {}
+        router.push(`/room/${code}`);
       } catch (err) {
         setCreateError(err.message || "Tạo phòng thất bại. Vui lòng thử lại.");
       }

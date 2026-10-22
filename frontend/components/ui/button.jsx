@@ -4,21 +4,21 @@ import { cva } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition duration-taste ease-taste focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98] [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition duration-taste ease-taste focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#c3a47b] disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98] [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "bg-zinc-900 text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-white shadow-sm",
+          "bg-[#c3a47b] text-[#161311] hover:bg-[#d6b88f] shadow-sm font-semibold",
         destructive:
-          "bg-rose-600 text-white hover:bg-rose-700 dark:bg-rose-700/90 dark:text-zinc-50 dark:hover:bg-rose-700",
+          "bg-[#8b2626] text-[#f5ede3] hover:bg-[#a63030] border border-[#a63030]/40",
         outline:
-          "border border-zinc-200/90 bg-transparent text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:border-zinc-800/60 dark:text-zinc-200 dark:hover:bg-zinc-900 dark:hover:text-zinc-50",
+          "border border-stone-300 dark:border-[#3a3128] bg-transparent text-[#2D241E] dark:text-[#d8c8b4] hover:bg-stone-200/60 dark:hover:bg-[#26201c] hover:text-[#2D241E] dark:hover:text-[#f5ede3]",
         secondary:
-          "bg-zinc-100 text-zinc-900 border border-zinc-200/80 hover:bg-zinc-200/70 dark:bg-zinc-900 dark:text-zinc-100 dark:border-zinc-800/60 dark:hover:bg-zinc-800",
+          "bg-[#EAE3D5] dark:bg-[#201b18] text-[#2D241E] dark:text-[#d8c8b4] border border-stone-300 dark:border-[#3a3128] hover:bg-stone-200 dark:hover:bg-[#29231f] hover:text-[#2D241E] dark:hover:text-[#f5ede3]",
         ghost:
-          "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100",
-        link: "text-zinc-900 underline-offset-4 hover:underline dark:text-zinc-100",
+          "text-[#615247] dark:text-[#a89b8d] hover:bg-stone-200/60 dark:hover:bg-[#26201c] hover:text-[#2D241E] dark:hover:text-[#f5ede3]",
+        link: "text-[#c3a47b] underline-offset-4 hover:underline",
       },
       size: {
         default: "h-10 px-4 py-2",

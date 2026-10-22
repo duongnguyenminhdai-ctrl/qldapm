@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 112" fill="none">
+  <defs>
+    <linearGradient id="owl-glass" x1="18" y1="12" x2="78" y2="99" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f0fdff" stop-opacity=".78"/>
+      <stop offset=".24" stop-color="#abdfe8" stop-opacity=".38"/>
+      <stop offset=".62" stop-color="#3f8da5" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#bbebf4" stop-opacity=".52"/>
+    </linearGradient>
+    <linearGradient id="owl-rim" x1="18" y1="16" x2="76" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f2feff" stop-opacity=".95"/>
+      <stop offset=".5" stop-color="#a4dae9" stop-opacity=".3"/>
+      <stop offset="1" stop-color="#d3f6ff" stop-opacity=".72"/>
+    </linearGradient>
+    <radialGradient id="owl-face" cx=".4" cy=".26" r=".85">
+      <stop stop-color="#edfdff" stop-opacity=".62"/>
+      <stop offset=".65" stop-color="#a5d6e4" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#6ea4be" stop-opacity=".12"/>
+    </radialGradient>
+  </defs>
+  <path d="M17 28 15 10q0-3 3-1l15 10q15-6 30 0L78 9q3-2 3 1l-2 18c12 21-3 39-31 40S5 49 17 28Z" fill="url(#owl-glass)" stroke="url(#owl-rim)" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="m20 24-1-9 11 8m36 0 11-8-1 9" stroke="#e7fbff" stroke-opacity=".62" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M48 31C30 13 13 27 21 46q7 12 27 17 20-5 27-17C83 27 66 13 48 31Z" fill="url(#owl-face)" stroke="#def8ff" stroke-opacity=".36" stroke-width="1"/>
+  <path d="M24 25q9-7 18 1M20 34q-1 7 3 12" stroke="#f1fdff" stroke-opacity=".72" stroke-width="2" stroke-linecap="round"/>
+  <path d="m44 52 4 8 4-8-4-3Z" fill="#b5e1e9" fill-opacity=".72" stroke="#ebfcff" stroke-opacity=".6" stroke-width=".8" stroke-linejoin="round"/>
+  <path d="m48 50 0 7 3-5Z" fill="#f1fcff" fill-opacity=".65"/>
+</svg>

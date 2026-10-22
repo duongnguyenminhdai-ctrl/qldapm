@@ -1,11 +1,20 @@
 const errorHandler = (err, req, res, next) => {
-  const statusCode = res.statusCode !== 200 ? res.statusCode : 500;
+  let statusCode = res.statusCode !== 200 ? res.statusCode : 500;
+  let message = err.message || "Lỗi máy chủ nội bộ";
 
-  console.error(`[Error] ${req.method} ${req.originalUrl}:`, err.message);
+  if (err.name === "CastError") {
+    statusCode = 400;
+    message = `Dữ liệu hoặc mã định danh không hợp lệ: ${err.value}`;
+  } else if (err.name === "ValidationError") {
+    statusCode = 400;
+    message = Object.values(err.errors || {}).map((val) => val.message).join(", ");
+  }
+
+  console.error(`[Error] ${req.method} ${req.originalUrl} (${statusCode}):`, message);
 
   res.status(statusCode).json({
     success: false,
-    message: err.message || "Lỗi máy chủ nội bộ",
+    message,
     stack: process.env.NODE_ENV === "production" ? undefined : err.stack,
   });
 };

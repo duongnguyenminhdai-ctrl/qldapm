@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
 const Room = require("../models/Room");
 const { getIo } = require("../config/socketInstance");
 
@@ -60,6 +61,56 @@ const createRoom = async (req, res, next) => {
     const roomCode = await generateUniqueRoomCode();
     const userId = req.user.id;
     const finalAccessType = accessType === "APPROVAL_REQUIRED" ? "APPROVAL_REQUIRED" : "OPEN";
+    const io = getIo();
+    const { destroyAndCleanupRoom } = require("../sockets");
+
+    // RÀNG BUỘC: Kiểm tra trong DB nếu user đã là Host của một phòng đang 'active' hoặc 'waiting_host' (còn trong hạn 10 phút)
+    const existingActiveRoom = await Room.findOne({
+      hostId: userId,
+      $or: [{ status: "active" }, { status: "waiting_host" }, { isActive: true }],
+    });
+
+    if (existingActiveRoom) {
+      if (existingActiveRoom.hostLeftAt) {
+        const elapsedMs = Date.now() - new Date(existingActiveRoom.hostLeftAt).getTime();
+        if (elapsedMs < 10 * 60 * 1000) {
+          return res.status(400).json({
+            success: false,
+            message: "Bạn đang có phòng học đang hoạt động, không thể tạo thêm phòng mới.",
+            roomCode: existingActiveRoom.roomCode,
+          });
+        } else {
+          // Đã quá 10 phút: dọn dẹp phòng cũ đã hết hạn
+          const oldCode = (existingActiveRoom.roomCode || "").toUpperCase();
+          if (typeof destroyAndCleanupRoom === "function") {
+            await destroyAndCleanupRoom(oldCode, io, "Hệ thống", "Hết thời gian chờ phòng cũ");
+          } else {
+            await Room.updateOne(
+              { _id: existingActiveRoom._id },
+              { $set: { status: "closed", isActive: false, hostLeftAt: null, participants: [] } }
+            );
+          }
+        }
+      } else {
+        // Phòng đang thực sự hoạt động và host chưa rời
+        return res.status(400).json({
+          success: false,
+          message: "Bạn đang có phòng học đang hoạt động, không thể tạo thêm phòng mới.",
+          roomCode: existingActiveRoom.roomCode,
+        });
+      }
+    }
+
+    // Đảm bảo dọn sạch triệt để mọi phòng ma còn sót lại của user
+    await Room.updateMany(
+      { hostId: userId, $or: [{ status: "closed" }, { isActive: false }] },
+      { $set: { hostLeftAt: null, participants: [] } }
+    );
+
+    const isChess = (category && category.trim().toLowerCase() === "chess") || req.body.type === "chess";
+    const finalMaxMembers = isChess ? 2 : (maxMembers || 20);
+    const finalCategory = isChess ? "chess" : (category && category.trim() ? category.trim().toLowerCase() : "general");
+    const finalType = isChess ? "chess" : "study";
 
     const room = await Room.create({
       title: rawTitle.trim(),
@@ -76,20 +127,36 @@ const createRoom = async (req, res, next) => {
         },
       ],
       isPrivate: Boolean(isPrivate),
-      category: category && category.trim() ? category.trim().toLowerCase() : "general",
-      maxMembers: maxMembers || 20,
+      category: finalCategory,
+      type: finalType,
+      maxMembers: finalMaxMembers,
       isActive: true,
+      status: "active",
+      hostLeftAt: null,
+      chessState: isChess ? {
+        fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        whitePlayerId: userId,
+        gameStatus: "waiting",
+        durationSeconds: 600,
+      } : undefined,
     });
 
     const populatedRoom = await Room.findById(room._id)
       .populate("hostId", "name email avatar isPro title equippedTitle")
       .populate("participants.userId", "name email avatar isPro title equippedTitle");
 
-    // Broadcast realtime cho dashboard mà không cần F5 (chỉ phát khi phòng công khai)
+    // Broadcast realtime cho dashboard & sảnh chờ mà không cần F5
     try {
-      const io = getIo();
-      if (io && !populatedRoom.isPrivate) {
-        io.emit("dashboard:room-created", { room: populatedRoom });
+      if (io) {
+        if (!populatedRoom.isPrivate) {
+          io.emit("dashboard:room-created", { room: populatedRoom });
+          io.emit("room_created", { room: populatedRoom });
+        }
+        io.emit("room_list_updated", {
+          roomCode: populatedRoom.roomCode,
+          action: "created",
+          room: populatedRoom,
+        });
       }
     } catch (_) {}
 
@@ -134,6 +201,47 @@ const joinRoom = async (req, res, next) => {
         success: false,
         message: "Phòng học không tồn tại hoặc đã kết thúc.",
       });
+    }
+
+    // Logic khóa tham gia phòng khác: Trong thời gian 10 phút chờ, Host bị chặn không được tham gia phòng khác
+    const pendingHostRoom = await Room.findOne({
+      hostId: userId,
+      status: "active",
+      isActive: true,
+      hostLeftAt: { $ne: null },
+      roomCode: { $ne: formattedCode },
+    });
+
+    if (pendingHostRoom) {
+      const elapsedMs = Date.now() - new Date(pendingHostRoom.hostLeftAt).getTime();
+      if (elapsedMs < 10 * 60 * 1000) {
+        const remainingSeconds = Math.max(0, Math.ceil((10 * 60 * 1000 - elapsedMs) / 1000));
+        return res.status(403).json({
+          success: false,
+          hasPendingHostRoom: true,
+          pendingRoomCode: pendingHostRoom.roomCode,
+          pendingRoomTitle: pendingHostRoom.title,
+          remainingSeconds,
+          message: "Bạn đang có một phòng học đang chờ. Hãy quay lại phòng của bạn để tiếp tục hoặc bấm kết thúc phiên học.",
+        });
+      } else {
+        const io = getIo();
+        const { destroyAndCleanupRoom } = require("../sockets");
+        if (typeof destroyAndCleanupRoom === "function") {
+          await destroyAndCleanupRoom(pendingHostRoom.roomCode, io, "Hệ thống", "Hết thời gian chờ phòng cũ");
+        }
+      }
+    }
+
+    // Nếu chính Host quay trở lại phòng của mình -> Hủy bộ đếm timeout và reset hostLeftAt
+    if (String(room.hostId) === String(userId) && room.hostLeftAt) {
+      await Room.updateOne({ _id: room._id }, { $set: { hostLeftAt: null } });
+      const io = getIo();
+      if (io) {
+        io.to(formattedCode).emit("room:host-returned", {
+          message: "Chủ phòng đã quay trở lại cuộc gọi.",
+        });
+      }
     }
 
     // Kiểm tra xem phòng có bị khóa tạm thời bởi chủ phòng không
@@ -276,12 +384,14 @@ const getRoomByCode = async (req, res, next) => {
       isActive: true,
     })
       .populate("hostId", "name email avatar isPro title equippedTitle")
-      .populate("participants.userId", "name email avatar isPro title equippedTitle");
+      .populate("participants.userId", "name email avatar isPro title equippedTitle")
+      .lean();
 
     if (!room && codeParam.match(/^[0-9a-fA-F]{24}$/)) {
       room = await Room.findById(codeParam)
         .populate("hostId", "name email avatar isPro title equippedTitle")
-        .populate("participants.userId", "name email avatar isPro title equippedTitle");
+        .populate("participants.userId", "name email avatar isPro title equippedTitle")
+        .lean();
     }
 
     if (!room || !room.isActive) {
@@ -291,11 +401,58 @@ const getRoomByCode = async (req, res, next) => {
       });
     }
 
+    // Xác thực userId từ req.user hoặc header token
+    let currentUserId = req.user?.id || req.user?._id;
+    if (!currentUserId && req.headers.authorization?.startsWith("Bearer ")) {
+      try {
+        const decoded = jwt.verify(req.headers.authorization.split(" ")[1], process.env.JWT_SECRET, { algorithms: ["HS256"] });
+        currentUserId = decoded.id;
+      } catch (_) {}
+    }
+
+    // Kiểm tra logic khóa tham gia phòng khác nếu user là Host của một phòng khác đang chờ
+    if (currentUserId) {
+      const pendingHostRoom = await Room.findOne({
+        hostId: currentUserId,
+        status: "active",
+        isActive: true,
+        hostLeftAt: { $ne: null },
+        roomCode: { $ne: room.roomCode },
+      });
+
+      if (pendingHostRoom) {
+        const elapsedMs = Date.now() - new Date(pendingHostRoom.hostLeftAt).getTime();
+        if (elapsedMs < 10 * 60 * 1000) {
+          const remainingSeconds = Math.max(0, Math.ceil((10 * 60 * 1000 - elapsedMs) / 1000));
+          return res.status(403).json({
+            success: false,
+            hasPendingHostRoom: true,
+            pendingRoomCode: pendingHostRoom.roomCode,
+            pendingRoomTitle: pendingHostRoom.title,
+            remainingSeconds,
+            message: "Bạn đang có một phòng học đang chờ. Hãy quay lại phòng của bạn để tiếp tục hoặc bấm kết thúc phiên học.",
+          });
+        }
+      }
+
+      // Nếu chính Host vào lại phòng của mình -> Hủy bộ đếm timeout và reset hostLeftAt
+      if (String(room.hostId?._id || room.hostId) === String(currentUserId) && room.hostLeftAt) {
+        await Room.updateOne({ _id: room._id }, { $set: { hostLeftAt: null } });
+        const io = getIo();
+        if (io) {
+          io.to(room.roomCode).emit("room:host-returned", {
+            message: "Chủ phòng đã quay trở lại cuộc gọi.",
+          });
+        }
+        room.hostLeftAt = null;
+      }
+    }
+
     // Kiểm tra xem user có bị cấm khỏi phòng không nếu có req.user
     if (
-      req.user &&
+      currentUserId &&
       room.bannedUsers &&
-      room.bannedUsers.some((bId) => String(bId) === String(req.user.id))
+      room.bannedUsers.some((bId) => String(bId) === String(currentUserId))
     ) {
       return res.status(403).json({
         success: false,
@@ -326,7 +483,13 @@ const getRooms = async (req, res, next) => {
     const skip = (page - 1) * limit;
 
     const { search, category, sort } = req.query;
-    const filter = { isActive: true, isPrivate: false };
+    // Lấy các phòng công khai đang active VÀ có ít nhất 1 thành viên
+    const filter = {
+      isActive: true,
+      status: "active",
+      isPrivate: { $ne: true },
+      "participants.0": { $exists: true },
+    };
 
     // Tìm kiếm theo tên, mô tả hoặc mã phòng
     if (search && search.trim()) {
@@ -343,41 +506,85 @@ const getRooms = async (req, res, next) => {
       filter.category = category.trim().toLowerCase();
     }
 
-    // Đếm tổng số lượng bản ghi thỏa mãn bộ lọc
-    const totalItems = await Room.countDocuments(filter);
-    const totalPages = Math.ceil(totalItems / limit) || 1;
+    // Lấy user ID nếu có token trong header để tìm phòng chờ của Host
+    let currentUserId = req.user?.id || req.user?._id;
+    if (!currentUserId && req.headers.authorization?.startsWith("Bearer ")) {
+      try {
+        const decoded = jwt.verify(req.headers.authorization.split(" ")[1], process.env.JWT_SECRET, { algorithms: ["HS256"] });
+        currentUserId = decoded.id;
+      } catch (_) {}
+    }
 
-    let rooms;
+    let myPendingRoomObj = null;
+    if (currentUserId) {
+      const myPendingRoom = await Room.findOne({
+        hostId: currentUserId,
+        status: "active",
+        isActive: true,
+        hostLeftAt: { $ne: null },
+      })
+        .populate("hostId", "name email avatar isPro title equippedTitle")
+        .populate("participants.userId", "name email avatar isPro title equippedTitle")
+        .lean();
+
+      if (myPendingRoom) {
+        const elapsedMs = Date.now() - new Date(myPendingRoom.hostLeftAt).getTime();
+        if (elapsedMs < 10 * 60 * 1000) {
+          const remainingSeconds = Math.max(0, Math.ceil((10 * 60 * 1000 - elapsedMs) / 1000));
+          const pObj = { ...myPendingRoom };
+          pObj.isMyPendingRoom = true;
+          pObj.hostLeftRemainingSeconds = remainingSeconds;
+          pObj.participantCount = Array.isArray(pObj.participants) ? pObj.participants.length : 0;
+          myPendingRoomObj = pObj;
+        } else {
+          // Timeout -> tự động dọn dẹp phòng cũ
+          const io = getIo();
+          const { destroyAndCleanupRoom } = require("../sockets");
+          if (typeof destroyAndCleanupRoom === "function") {
+            await destroyAndCleanupRoom(myPendingRoom.roomCode, io, "Hệ thống", "Hết thời gian chờ phòng cũ");
+          }
+        }
+      }
+    }
+
+    // Chạy song song countDocuments và query rooms qua Promise.all để giảm một nửa độ trễ mạng
+    let sortObj = { createdAt: -1 };
+    if (sort === "oldest") sortObj = { createdAt: 1 };
+    else if (sort === "name_asc") sortObj = { title: 1 };
+
+    const totalItemsPromise = Room.countDocuments(filter);
+    let roomsPromise;
+
     if (sort === "popular") {
-      // Sắp xếp theo số lượng thành viên đang tham gia (nhiều nhất trước)
-      rooms = await Room.aggregate([
+      roomsPromise = Room.aggregate([
         { $match: filter },
         {
           $addFields: {
             participantCount: { $size: { $ifNull: ["$participants", []] } },
           },
         },
+        { $match: { participantCount: { $gt: 0 } } },
         { $sort: { participantCount: -1, createdAt: -1 } },
         { $skip: skip },
         { $limit: limit },
-      ]);
-      // Populate hostId và participants.userId cho aggregation
-      rooms = await Room.populate(rooms, [
-        { path: "hostId", select: "name email avatar isPro title equippedTitle" },
-        { path: "participants.userId", select: "name email avatar isPro title equippedTitle" },
-      ]);
+      ]).then((aggrRooms) =>
+        Room.populate(aggrRooms, [
+          { path: "hostId", select: "name email avatar isPro title equippedTitle" },
+          { path: "participants.userId", select: "name email avatar isPro title equippedTitle" },
+        ])
+      );
     } else {
-      let sortObj = { createdAt: -1 };
-      if (sort === "oldest") sortObj = { createdAt: 1 };
-      else if (sort === "name_asc") sortObj = { title: 1 };
-
-      rooms = await Room.find(filter)
+      roomsPromise = Room.find(filter)
         .populate("hostId", "name email avatar isPro title equippedTitle")
         .populate("participants.userId", "name email avatar isPro title equippedTitle")
         .sort(sortObj)
         .skip(skip)
-        .limit(limit);
+        .limit(limit)
+        .lean();
     }
+
+    const [totalItems, rooms] = await Promise.all([totalItemsPromise, roomsPromise]);
+    const totalPages = Math.ceil(totalItems / limit) || 1;
 
     const paginationMeta = {
       currentPage: page,
@@ -388,30 +595,48 @@ const getRooms = async (req, res, next) => {
       hasPrevPage: page > 1,
     };
 
-    // Chuẩn hóa và làm sạch participants cho mỗi phòng khi gửi về client
-    const normalizedRooms = rooms.map((r) => {
-      const rObj = r.toObject ? r.toObject() : { ...r };
-      if (Array.isArray(rObj.participants)) {
-        const seen = new Set();
-        const uniqueParticipants = [];
-        for (const p of rObj.participants) {
-          const uId = String(p?.userId?._id || p?.userId || "");
-          if (uId && !seen.has(uId)) {
-            seen.add(uId);
-            uniqueParticipants.push(p);
+    // Chuẩn hóa và làm sạch participants
+    let normalizedRooms = rooms
+      .map((r) => {
+        const rObj = r.toObject ? r.toObject() : { ...r };
+        if (Array.isArray(rObj.participants)) {
+          const seen = new Set();
+          const uniqueParticipants = [];
+          for (const p of rObj.participants) {
+            const uId = String(p?.userId?._id || p?.userId || "");
+            if (uId && !seen.has(uId)) {
+              seen.add(uId);
+              uniqueParticipants.push(p);
+            }
           }
+          rObj.participants = uniqueParticipants;
+          rObj.participantCount = uniqueParticipants.length;
+        } else {
+          rObj.participants = [];
+          rObj.participantCount = 0;
         }
-        rObj.participants = uniqueParticipants;
-        rObj.participantCount = uniqueParticipants.length;
-      }
-      return rObj;
-    });
+        if (myPendingRoomObj && (rObj.roomCode || "").toUpperCase() === (myPendingRoomObj.roomCode || "").toUpperCase()) {
+          rObj.isMyPendingRoom = true;
+          rObj.hostLeftRemainingSeconds = myPendingRoomObj.hostLeftRemainingSeconds;
+        }
+        return rObj;
+      })
+      .filter((r) => (r.participantCount || r.participants?.length || 0) > 0);
+
+    // Ghim phòng của Host lên ĐẦU TIÊN
+    if (myPendingRoomObj) {
+      const rest = normalizedRooms.filter(
+        (r) => (r.roomCode || "").toUpperCase() !== (myPendingRoomObj.roomCode || "").toUpperCase()
+      );
+      normalizedRooms = [myPendingRoomObj, ...rest];
+    }
 
     return res.status(200).json({
       success: true,
       count: normalizedRooms.length,
       data: {
         rooms: normalizedRooms,
+        myPendingRoom: myPendingRoomObj,
         pagination: paginationMeta,
       },
       pagination: paginationMeta,
@@ -421,9 +646,203 @@ const getRooms = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/rooms/leave hoặc POST /api/rooms/:roomCode/leave
+ * Hỗ trợ cả request từ fetch thông thường (có Authorization header) lẫn navigator.sendBeacon (chứa token/userId trong body).
+ * Body: { roomCode, roomId, userId, token }
+ */
+const leaveRoom = async (req, res, next) => {
+  try {
+    const rawCode =
+      req.params?.roomCode ||
+      req.body?.roomCode ||
+      req.body?.roomId ||
+      req.query?.roomCode;
+
+    if (!rawCode) {
+      return res.status(400).json({
+        success: false,
+        message: "Mã phòng (roomCode) là bắt buộc.",
+      });
+    }
+
+    // 1. Xác thực danh tính người dùng (Bắt buộc lấy trực tiếp từ token qua req.user, triệt tiêu việc nhận req.body.userId giả mạo)
+    let userId = req.user?._id || req.user?.id;
+
+    if (!userId) {
+      let token = null;
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        token = authHeader.split(" ")[1];
+      } else if (req.body?.token) {
+        token = req.body.token;
+      } else if (req.query?.token) {
+        token = req.query.token;
+      }
+
+      if (token && process.env.JWT_SECRET) {
+        try {
+          const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
+          userId = decoded.id || decoded._id;
+        } catch (_) {}
+      }
+    }
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Không xác định được danh tính người dùng rời phòng. Vui lòng đăng nhập lại.",
+      });
+    }
+
+    const uIdStr = String(userId);
+    const codeParam = String(rawCode).trim().toUpperCase();
+
+    // 2. Tìm kiếm phòng học theo roomCode hoặc _id
+    let room = await Room.findOne({
+      roomCode: codeParam,
+      isActive: true,
+    });
+
+    if (!room && codeParam.match(/^[0-9a-fA-F]{24}$/)) {
+      room = await Room.findById(codeParam);
+    }
+
+    if (!room) {
+      return res.status(200).json({
+        success: true,
+        message: "Phòng học không tồn tại hoặc đã được dọn sạch trước đó.",
+      });
+    }
+
+    const normalizedCode = room.roomCode.toUpperCase();
+    const hostIdStr = String(room.hostId?._id || room.hostId || "");
+    const isHost = hostIdStr === uIdStr;
+    const io = getIo();
+    const roomAgeMs = Date.now() - new Date(room.createdAt).getTime();
+
+    // 3. Nếu là Chủ phòng (Host) rời phòng
+    const isLeaveOnly = req.body?.action === "leave_only" || req.body?.terminate === false;
+    const shouldTerminate = req.body?.terminate === true || req.body?.action === "terminate" || (!isLeaveOnly && (!room.participants || room.participants.length <= 1));
+
+    if (isHost && shouldTerminate) {
+      const { destroyAndCleanupRoom } = require("../sockets");
+      if (typeof destroyAndCleanupRoom === "function") {
+        await destroyAndCleanupRoom(normalizedCode, io, "Chủ phòng", "Chủ phòng đã kết thúc phiên học");
+      } else {
+        await Room.deleteMany({ _id: room._id });
+        if (io) {
+          io.emit("dashboard:room-deleted", { roomCode: normalizedCode });
+          io.emit("room_list_updated", { roomCode: normalizedCode, action: "deleted" });
+          io.emit("room:deleted", { roomCode: normalizedCode });
+          io.emit("room_terminated", { message: "Chủ phòng đã kết thúc phiên học", reason: "host_terminated" });
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        isHost: true,
+        terminated: true,
+        message: "Chủ phòng đã kết thúc phiên học cho mọi người.",
+      });
+    }
+
+    // 4. Nếu là thành viên thông thường hoặc Host chọn 'Chỉ rời cuộc gọi' -> Loại bỏ khỏi danh sách participants
+    if (isHost && isLeaveOnly) {
+      await Room.updateOne(
+        { _id: room._id },
+        {
+          $set: { hostLeftAt: new Date() },
+          $pull: {
+            participants: {
+              userId: uIdStr,
+            },
+          },
+        }
+      );
+      const { startHostAbsenceTimer } = require("../sockets");
+      if (typeof startHostAbsenceTimer === "function") {
+        startHostAbsenceTimer(normalizedCode, io, req.body?.userName || "Chủ phòng");
+      }
+    } else {
+      await Room.updateOne(
+        { _id: room._id },
+        {
+          $pull: {
+            participants: {
+              userId: uIdStr,
+            },
+          },
+        }
+      );
+    }
+
+    const updatedRoom = await Room.findById(room._id)
+      .populate("hostId", "name email avatar isPro title equippedTitle")
+      .populate("participants.userId", "name email avatar isPro title equippedTitle");
+
+    // Nếu không còn thành viên nào trong phòng -> Dọn sạch và đóng phòng ngay để tránh phòng ma
+    if (!updatedRoom || !updatedRoom.participants || updatedRoom.participants.length === 0) {
+      const { destroyAndCleanupRoom } = require("../sockets");
+      if (typeof destroyAndCleanupRoom === "function") {
+        await destroyAndCleanupRoom(normalizedCode, io, "Hệ thống");
+      } else {
+        await Room.deleteMany({ _id: room._id });
+        if (io) {
+          io.emit("dashboard:room-deleted", { roomCode: normalizedCode });
+          io.emit("room_list_updated", { roomCode: normalizedCode, action: "deleted" });
+          io.emit("room:deleted", { roomCode: normalizedCode });
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Phòng học không còn người tham gia và đã được tự động dọn sạch.",
+        membersCount: 0,
+      });
+    }
+
+    // Nếu vẫn còn thành viên -> Broadcast cập nhật lại số lượng và danh sách cho các client khác
+    const remainingParticipants = updatedRoom.participants || [];
+    const membersCount = remainingParticipants.length;
+
+    if (io) {
+      const { emitUserLeftSafely } = require("../sockets");
+      if (typeof emitUserLeftSafely === "function") {
+        emitUserLeftSafely(io, normalizedCode, uIdStr, null, req.body?.userName || "Thành viên");
+      } else {
+        io.to(normalizedCode).emit("room:user-left", {
+          userId: uIdStr,
+          name: req.body?.userName || "Thành viên",
+        });
+      }
+      io.to(normalizedCode).emit("room:members-sync", {
+        roomCode: normalizedCode,
+        participants: remainingParticipants,
+        membersCount,
+        hostId: updatedRoom.hostId,
+      });
+      io.emit("room:members-sync", {
+        roomCode: normalizedCode,
+        participants: remainingParticipants,
+        membersCount,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Rời phòng thành công.",
+      membersCount,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createRoom,
   joinRoom,
+  leaveRoom,
   getRoomByCode,
   getRooms,
 };

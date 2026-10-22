@@ -21,7 +21,7 @@ const getLiveKitToken = async (req, res, next) => {
     const userId = req.user?.id || req.user?._id;
     let dbUser = null;
 
-    // Kiểm tra xem phòng có cấm user này không
+    // Kiểm tra tính hợp lệ và quyền truy cập phòng của user
     if (userId) {
       const [room, userDoc] = await Promise.all([
         Room.findOne({ roomCode }),
@@ -29,8 +29,14 @@ const getLiveKitToken = async (req, res, next) => {
       ]);
       dbUser = userDoc;
 
+      if (!room || !room.isActive || room.status === "closed") {
+        return res.status(404).json({
+          success: false,
+          message: "Phòng học không tồn tại hoặc đã đóng.",
+        });
+      }
+
       if (
-        room &&
         room.bannedUsers &&
         room.bannedUsers.some((bId) => String(bId) === String(userId))
       ) {
@@ -39,6 +45,31 @@ const getLiveKitToken = async (req, res, next) => {
           isBanned: true,
           message: "Bạn đã bị cấm tham gia phòng học này cho đến khi phòng đóng.",
         });
+      }
+
+      const isHost = String(room.hostId) === String(userId);
+
+      // Kiểm tra phòng bị khóa
+      if (room.isLocked && !isHost) {
+        return res.status(403).json({
+          success: false,
+          isLocked: true,
+          message: "Phòng học hiện đang bị khóa bởi chủ phòng.",
+        });
+      }
+
+      // Kiểm tra phòng chờ duyệt
+      if (room.accessType === "APPROVAL_REQUIRED" && !isHost) {
+        const isApproved =
+          room.approvedUsers &&
+          room.approvedUsers.some((aId) => String(aId) === String(userId));
+        if (!isApproved) {
+          return res.status(403).json({
+            success: false,
+            requiresApproval: true,
+            message: "Bạn cần được chủ phòng phê duyệt trước khi kết nối âm thanh và hình ảnh.",
+          });
+        }
       }
     }
 

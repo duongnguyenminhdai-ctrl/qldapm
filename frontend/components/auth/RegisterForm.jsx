@@ -5,20 +5,20 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FlashlightPasswordField, OwlMascot } from "@/components/auth/FlashlightPasswordField";
 import { OtpInput } from "@/components/auth/OtpInput";
 import { GoogleAuthButton } from "@/components/auth/GoogleAuthButton";
 import { authApi, setAuthSession } from "@/lib/api";
 import { parseAuthErrors, validateRegisterFields } from "@/lib/authErrors";
 import {
   ShieldCheck,
-  CheckCircle2,
   AlertCircle,
-  Loader2,
   ArrowLeft,
   Mail,
+  Loader2,
 } from "lucide-react";
 
-export function RegisterForm() {
+export function RegisterForm({ onSwitchToLogin, onSwitchToForgot } = {}) {
   const router = useRouter();
 
   // steps: 'FORM' | 'OTP'
@@ -121,7 +121,7 @@ export function RegisterForm() {
           user: result.data.user,
         });
 
-        router.push("/");
+        router.push("/dashboard");
         router.refresh();
         return;
       }
@@ -197,25 +197,38 @@ export function RegisterForm() {
             error={fieldErrors.name}
           />
 
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            label="Email"
-            placeholder="ban@email.com"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              clearFieldError("email");
-            }}
-            error={fieldErrors.email}
-          />
+          {/* Ô Email: Không gắn đèn pin, con cú đậu gọn gàng trên nhãn */}
+          <div className="relative">
+            <div className="flex items-center justify-between mb-1.5">
+              <label
+                htmlFor="email"
+                className="text-xs font-medium text-[#2D241E] dark:text-[#d8c8b4]"
+              >
+                Email
+              </label>
+              <div className="owl-wrapper scale-75 origin-bottom-right">
+                <OwlMascot />
+              </div>
+            </div>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              placeholder="ban@email.com"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                clearFieldError("email");
+              }}
+              error={fieldErrors.email}
+            />
+          </div>
 
-          <Input
+          {/* Ô Mật khẩu: Đèn pin cố định, hiển thị trọn vẹn khi hover/focus */}
+          <FlashlightPasswordField
             id="password"
             name="password"
-            type="password"
             label="Mật khẩu"
             placeholder="Tối thiểu 6 ký tự"
             autoComplete="new-password"
@@ -227,10 +240,10 @@ export function RegisterForm() {
             error={fieldErrors.password}
           />
 
-          <Input
+          {/* Ô Xác nhận mật khẩu: Đồng bộ hoàn toàn cùng component và style */}
+          <FlashlightPasswordField
             id="confirmPassword"
             name="confirmPassword"
-            type="password"
             label="Xác nhận mật khẩu"
             placeholder="Nhập lại mật khẩu"
             autoComplete="new-password"
@@ -244,15 +257,14 @@ export function RegisterForm() {
 
           <Button
             type="submit"
-            className="w-full mt-2"
-            size="lg"
             disabled={loading}
+            className="w-full h-11 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-600 hover:via-amber-500 hover:to-amber-600 text-stone-950 font-serif font-bold text-sm tracking-wide rounded-xl shadow-md hover:shadow-amber-500/20 active:scale-[0.99] transition-all cursor-pointer mt-2"
           >
             {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-stone-950" />
                 <span>Đang gửi mã xác thực...</span>
-              </>
+              </span>
             ) : (
               "Đăng ký với Email & OTP"
             )}
@@ -260,10 +272,10 @@ export function RegisterForm() {
 
           <div className="relative my-4">
             <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-zinc-800" />
+              <span className="w-full border-t border-[#3a3128]" />
             </div>
             <div className="relative flex justify-center text-[11px] uppercase tracking-wider">
-              <span className="bg-zinc-950 px-2 text-zinc-500">
+              <span className="bg-[#201b18] px-2.5 text-[#75695e]">
                 Hoặc tiếp tục với
               </span>
             </div>
@@ -280,13 +292,13 @@ export function RegisterForm() {
       {step === "OTP" && (
         <div className="space-y-5">
           <div className="text-left space-y-1">
-            <h2 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-purple-400" />
+            <h2 className="text-lg font-semibold text-[#f5ede3] flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-[#c3a47b]" />
               <span>Xác thực mã OTP</span>
             </h2>
-            <p className="text-xs text-zinc-400 leading-relaxed">
+            <p className="text-xs text-[#a89b8d] leading-relaxed">
               Mã xác thực gồm 6 số đã được gửi tới email{" "}
-              <strong className="text-zinc-200 font-mono">{email}</strong>.
+              <strong className="text-[#f5ede3] font-mono">{email}</strong>.
             </p>
           </div>
 
@@ -307,15 +319,14 @@ export function RegisterForm() {
           <Button
             type="button"
             onClick={() => handleVerifyOtp()}
-            className="w-full"
-            size="lg"
             disabled={loading || otp.length < 6}
+            className="w-full h-11 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-600 hover:via-amber-500 hover:to-amber-600 text-stone-950 font-serif font-bold text-sm tracking-wide rounded-xl shadow-md hover:shadow-amber-500/20 active:scale-[0.99] transition-all cursor-pointer"
           >
             {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-stone-950" />
                 <span>Đang kích hoạt tài khoản...</span>
-              </>
+              </span>
             ) : (
               "Xác nhận & Tạo tài khoản"
             )}
@@ -333,31 +344,63 @@ export function RegisterForm() {
               <ArrowLeft className="h-3 w-3" />
               <span>Đổi thông tin đăng ký</span>
             </button>
-            <Link
-              href="/forgot-password"
-              className="text-zinc-500 hover:text-zinc-300 transition"
-            >
-              Quên mật khẩu?
-            </Link>
+            {onSwitchToForgot ? (
+              <button
+                type="button"
+                onClick={onSwitchToForgot}
+                className="text-zinc-500 hover:text-zinc-300 transition cursor-pointer"
+              >
+                Quên mật khẩu?
+              </button>
+            ) : (
+              <Link
+                href="/forgot-password"
+                className="text-zinc-500 hover:text-zinc-300 transition"
+              >
+                Quên mật khẩu?
+              </Link>
+            )}
           </div>
         </div>
       )}
 
       {/* Chân trang điều hướng */}
-      <div className="mt-6 flex flex-col items-center gap-2 text-xs text-zinc-500">
+      <div className="mt-6 flex flex-col items-center gap-2 text-xs text-[#75695e]">
         <p>
           Đã có tài khoản?{" "}
-          <Link href="/login" className="text-zinc-200 hover:text-white font-medium">
-            Đăng nhập ngay
-          </Link>
+          {onSwitchToLogin ? (
+            <button
+              type="button"
+              onClick={onSwitchToLogin}
+              className="text-[#c3a47b] hover:text-[#d6b88f] font-medium transition cursor-pointer"
+            >
+              Đăng nhập ngay
+            </button>
+          ) : (
+            <Link href="/login" className="text-[#c3a47b] hover:text-[#d6b88f] font-medium">
+              Đăng nhập ngay
+            </Link>
+          )}
         </p>
-        <Link
-          href="/forgot-password"
-          className="text-zinc-500 hover:text-zinc-300 transition"
-        >
-          Quên mật khẩu?
-        </Link>
+        {onSwitchToForgot ? (
+          <button
+            type="button"
+            onClick={onSwitchToForgot}
+            className="text-[#75695e] hover:text-[#f5ede3] transition cursor-pointer"
+          >
+            Quên mật khẩu?
+          </button>
+        ) : (
+          <Link
+            href="/forgot-password"
+            className="text-[#75695e] hover:text-[#f5ede3] transition"
+          >
+            Quên mật khẩu?
+          </Link>
+        )}
       </div>
     </>
   );
 }
+
+export default RegisterForm;

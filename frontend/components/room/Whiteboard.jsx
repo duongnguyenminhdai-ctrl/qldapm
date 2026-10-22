@@ -14,11 +14,11 @@ import {
 import { cn } from "@/lib/utils";
 
 const COLORS = [
-  { name: "Trắng", value: "#FFFFFF", ring: "ring-white" },
-  { name: "Zinc", value: "#A1A1AA", ring: "ring-zinc-400" },
-  { name: "Amber", value: "#FBBF24", ring: "ring-amber-400" },
-  { name: "Emerald", value: "#34D399", ring: "ring-emerald-400" },
-  { name: "Rose", value: "#FB7185", ring: "ring-rose-400" },
+  { name: "Kem sáng", value: "#F5EDE3", ring: "ring-[#f5ede3]" },
+  { name: "Vàng cát ThreeUI", value: "#C3A47B", ring: "ring-[#c3a47b]" },
+  { name: "Hổ phách ấm", value: "#E8CCA4", ring: "ring-[#e8cca4]" },
+  { name: "Đất nung", value: "#945A3E", ring: "ring-[#945a3e]" },
+  { name: "Đỏ trầm", value: "#8B2626", ring: "ring-[#8b2626]" },
 ];
 
 const STROKE_WIDTHS = [2, 4, 8, 14];
@@ -151,7 +151,8 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
     const height = container.clientHeight;
     if (width === 0 || height === 0) return;
 
-    const dpr = window.devicePixelRatio || 1;
+    // Giới hạn DPR tối đa 1.25 theo khuyến nghị để tránh quá tải GPU/VRAM trên màn hình Retina/High-DPI
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
     canvas.width = width * dpr;
     canvas.height = height * dpr;
     canvas.style.width = `${width}px`;
@@ -663,7 +664,7 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
     exportCtx.scale(scale, scale);
 
     // 1. Vẽ nền tối toàn bộ bảng vẽ
-    exportCtx.fillStyle = "#09090b";
+    exportCtx.fillStyle = "#141210";
     exportCtx.fillRect(0, 0, width, height);
 
     // 2. Vẽ tất cả các ảnh ở lớp dưới
@@ -738,20 +739,20 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-3 backdrop-blur-sm sm:p-6"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-6"
       role="dialog"
       aria-modal="true"
       aria-label="Bảng vẽ chung"
     >
-      <div className="relative flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950 shadow-2xl">
+      <div className="relative flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-stone-200 bg-[#FAF8F5] dark:border-[#3a3128] dark:bg-[#1c1815] shadow-2xl">
         {/* Header bảng vẽ */}
-        <div className="flex h-13 items-center justify-between border-b border-zinc-800/60 px-4 py-2.5">
+        <div className="flex h-13 items-center justify-between border-b border-stone-200 bg-[#F7F4EB] dark:border-[#2d2620] dark:bg-[#181513] px-4 py-2.5">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-400" />
-            <h2 className="text-sm font-semibold tracking-tight text-zinc-100">
+            <span className="flex h-2 w-2 rounded-full bg-[#b3894e] dark:bg-[#c3a47b]" />
+            <h2 className="font-serif text-base font-semibold tracking-tight text-[#2D241E] dark:text-[#f5ede3]">
               Bảng vẽ chung
             </h2>
-            <span className="hidden rounded-full border border-zinc-800 bg-zinc-900/60 px-2 py-0.5 font-mono text-[11px] text-zinc-400 sm:inline-block">
+            <span className="hidden rounded-full border border-stone-300 bg-[#ECE5DA] px-2.5 py-0.5 font-mono text-[11px] text-[#966f38] dark:border-[#3a3128] dark:bg-[#201b18] dark:text-[#c3a47b] sm:inline-block">
               Phòng: {roomCode}
             </span>
           </div>
@@ -761,7 +762,7 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
               type="button"
               onClick={handleDownload}
               title="Tải ảnh bảng vẽ (JPG)"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-[#615247] transition-colors hover:bg-[#ECE5DA] hover:text-[#2D241E] dark:text-[#d8c8b4] dark:hover:bg-[#26201c] dark:hover:text-[#f5ede3]"
             >
               <Download className="h-4 w-4" strokeWidth={1.75} />
             </button>
@@ -769,7 +770,7 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
               type="button"
               onClick={onClose}
               title="Đóng bảng vẽ"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-[#615247] transition-colors hover:bg-[#ECE5DA] hover:text-[#2D241E] dark:text-[#d8c8b4] dark:hover:bg-[#26201c] dark:hover:text-[#f5ede3]"
             >
               <X className="h-4 w-4" strokeWidth={1.75} />
             </button>
@@ -786,14 +787,14 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
             }
           }}
           className={cn(
-            "relative flex-1 select-none overflow-hidden bg-[#09090b]",
+            "relative flex-1 select-none overflow-hidden bg-[#FAF8F5] dark:bg-[#141210]",
             tool === "select" ? "cursor-default" : "cursor-crosshair"
           )}
         >
           {/* Subtle Floating Toolbar */}
           <div
             onClick={(e) => e.stopPropagation()}
-            className="pointer-events-auto absolute left-1/2 top-4 z-30 flex -translate-x-1/2 items-center gap-1 rounded-2xl border border-zinc-800/80 bg-zinc-900/90 p-1.5 shadow-xl backdrop-blur-md"
+            className="pointer-events-auto absolute left-1/2 top-4 z-30 flex -translate-x-1/2 items-center gap-1 rounded-2xl border border-stone-200 bg-[#FAF8F5]/95 dark:border-[#3a3128] dark:bg-[#1e1916]/95 p-1.5 shadow-xl backdrop-blur-md"
           >
             {/* Chế độ 1: Chọn / Kéo thả ảnh (Select & Transform) */}
             <button
@@ -806,8 +807,8 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
               className={cn(
                 "flex h-8 w-8 items-center justify-center rounded-xl transition-all",
                 tool === "select"
-                  ? "bg-zinc-100 text-zinc-950 shadow-sm"
-                  : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  ? "bg-[#b3894e] text-white dark:bg-[#c3a47b] dark:text-[#161311] shadow-sm font-semibold"
+                  : "text-[#8C7E72] hover:bg-[#ECE5DA] hover:text-[#2D241E] dark:text-[#a89b8d] dark:hover:bg-[#26201c] dark:hover:text-[#f5ede3]"
               )}
             >
               <MousePointer className="h-4 w-4" strokeWidth={1.75} />
@@ -825,8 +826,8 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
               className={cn(
                 "flex h-8 w-8 items-center justify-center rounded-xl transition-all",
                 tool === "pen"
-                  ? "bg-zinc-100 text-zinc-950 shadow-sm"
-                  : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  ? "bg-[#b3894e] text-white dark:bg-[#c3a47b] dark:text-[#161311] shadow-sm font-semibold"
+                  : "text-[#8C7E72] hover:bg-[#ECE5DA] hover:text-[#2D241E] dark:text-[#a89b8d] dark:hover:bg-[#26201c] dark:hover:text-[#f5ede3]"
               )}
             >
               <PenLine className="h-4 w-4" strokeWidth={1.75} />
@@ -844,14 +845,14 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
               className={cn(
                 "flex h-8 w-8 items-center justify-center rounded-xl transition-all",
                 tool === "eraser"
-                  ? "bg-zinc-100 text-zinc-950 shadow-sm"
-                  : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  ? "bg-[#b3894e] text-white dark:bg-[#c3a47b] dark:text-[#161311] shadow-sm font-semibold"
+                  : "text-[#8C7E72] hover:bg-[#ECE5DA] hover:text-[#2D241E] dark:text-[#a89b8d] dark:hover:bg-[#26201c] dark:hover:text-[#f5ede3]"
               )}
             >
               <Eraser className="h-4 w-4" strokeWidth={1.75} />
             </button>
 
-            <span className="mx-1 h-4 w-px bg-zinc-800" aria-hidden />
+            <span className="mx-1 h-4 w-px bg-stone-300 dark:bg-[#3a3128]" aria-hidden />
 
             {/* Chèn ảnh: Upload từ máy tính */}
             <input
@@ -870,15 +871,15 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
               onClick={() => fileInputRef.current?.click()}
               aria-label="Tải ảnh lên"
               title="Tải ảnh từ máy tính (hoặc Ctrl+V để dán)"
-              className="flex h-8 w-8 items-center justify-center rounded-xl text-zinc-400 transition-all hover:bg-zinc-800 hover:text-zinc-100"
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-[#8C7E72] transition-all hover:bg-[#ECE5DA] hover:text-[#2D241E] dark:text-[#a89b8d] dark:hover:bg-[#26201c] dark:hover:text-[#f5ede3]"
             >
               <ImagePlus className="h-4 w-4" strokeWidth={1.75} />
             </button>
 
-            <span className="mx-1 h-4 w-px bg-zinc-800" aria-hidden />
+            <span className="mx-1 h-4 w-px bg-stone-300 dark:bg-[#3a3128]" aria-hidden />
 
             {/* Bảng màu tinh tế 5 màu */}
-            <div className="flex items-center gap-1 px-1">
+            <div className="flex items-center gap-1.5 px-1">
               {COLORS.map((c) => (
                 <button
                   key={c.value}
@@ -890,16 +891,16 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
                   title={c.name}
                   style={{ backgroundColor: c.value }}
                   className={cn(
-                    "h-4 w-4 rounded-full transition-transform hover:scale-110",
+                    "h-4 w-4 rounded-full transition-transform hover:scale-110 shadow-xs",
                     color === c.value && tool === "pen"
-                      ? "ring-2 ring-zinc-400 ring-offset-2 ring-offset-zinc-900"
+                      ? "ring-2 ring-[#c3a47b] ring-offset-2 ring-offset-[#FAF8F5] dark:ring-offset-[#1e1916]"
                       : "opacity-80"
                   )}
                 />
               ))}
             </div>
 
-            <span className="mx-1 h-4 w-px bg-zinc-800" aria-hidden />
+            <span className="mx-1 h-4 w-px bg-stone-300 dark:bg-[#3a3128]" aria-hidden />
 
             {/* Kích thước nét vẽ */}
             <div className="flex items-center gap-1 px-1">
@@ -912,8 +913,8 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
                   className={cn(
                     "flex h-7 w-7 items-center justify-center rounded-lg text-xs transition-colors",
                     strokeWidth === w
-                      ? "bg-zinc-800 text-zinc-100"
-                      : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200"
+                      ? "border border-[#b3894e]/50 bg-[#ECE5DA] text-[#966f38] dark:border-[#c3a47b]/40 dark:bg-[#29231f] dark:text-[#c3a47b]"
+                      : "text-[#8C7E72] hover:bg-[#ECE5DA] hover:text-[#2D241E] dark:text-[#a89b8d] dark:hover:bg-[#201b18] dark:hover:text-[#f5ede3]"
                   )}
                 >
                   <span
@@ -924,7 +925,7 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
               ))}
             </div>
 
-            <span className="mx-1 h-4 w-px bg-zinc-800" aria-hidden />
+            <span className="mx-1 h-4 w-px bg-stone-300 dark:bg-[#3a3128]" aria-hidden />
 
             {/* Nút xóa bảng */}
             {showClearConfirm ? (
@@ -932,14 +933,14 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
                 <button
                   type="button"
                   onClick={handleClearBoard}
-                  className="rounded-lg bg-rose-500/20 px-2 py-1 text-xs font-medium text-rose-300 hover:bg-rose-500/30"
+                  className="rounded-lg border border-[#8b2626]/50 bg-[#8b2626]/25 px-2 py-1 text-xs font-medium text-[#f5ede3] hover:bg-[#8b2626]/40"
                 >
                   Xóa hết?
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowClearConfirm(false)}
-                  className="rounded-lg px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-800"
+                  className="rounded-lg px-2 py-1 text-xs text-[#8C7E72] hover:bg-[#ECE5DA] hover:text-[#2D241E] dark:text-[#a89b8d] dark:hover:bg-[#201b18] dark:hover:text-[#f5ede3]"
                 >
                   Hủy
                 </button>
@@ -950,7 +951,7 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
                 onClick={() => setShowClearConfirm(true)}
                 title="Xóa toàn bộ bảng"
                 aria-label="Xóa toàn bộ bảng"
-                className="flex h-8 w-8 items-center justify-center rounded-xl text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-rose-400"
+                className="flex h-8 w-8 items-center justify-center rounded-xl text-[#8C7E72] transition-colors hover:bg-[#ECE5DA] hover:text-[#8b2626] dark:text-[#a89b8d] dark:hover:bg-[#26201c] dark:hover:text-[#8b2626]"
               >
                 <Trash2 className="h-4 w-4" strokeWidth={1.75} />
               </button>
@@ -986,7 +987,7 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
                   className={cn(
                     "absolute select-none",
                     tool === "select" ? "cursor-move" : "cursor-crosshair",
-                    isSelected && "ring-1 ring-zinc-400"
+                    isSelected && "ring-1 ring-[#c3a47b]"
                   )}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1001,32 +1002,32 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
                   {isSelected && (
                     <>
                       {/* Bounding box viền đứt thanh mảnh */}
-                      <div className="pointer-events-none absolute inset-0 border border-dashed border-zinc-400/80 rounded" />
+                      <div className="pointer-events-none absolute inset-0 border border-dashed border-[#c3a47b]/80 rounded" />
 
                       {/* 4 Handles ở 4 góc */}
                       {/* Top-Left */}
                       <div
                         onClick={(e) => e.stopPropagation()}
                         onPointerDown={(e) => handleResizeHandleDown(e, img, "nw")}
-                        className="absolute -left-1.5 -top-1.5 h-3 w-3 cursor-nwse-resize rounded-full border border-zinc-900 bg-zinc-100 shadow"
+                        className="absolute -left-1.5 -top-1.5 h-3 w-3 cursor-nwse-resize rounded-full border border-[#141210] bg-[#c3a47b] shadow"
                       />
                       {/* Top-Right */}
                       <div
                         onClick={(e) => e.stopPropagation()}
                         onPointerDown={(e) => handleResizeHandleDown(e, img, "ne")}
-                        className="absolute -right-1.5 -top-1.5 h-3 w-3 cursor-nesw-resize rounded-full border border-zinc-900 bg-zinc-100 shadow"
+                        className="absolute -right-1.5 -top-1.5 h-3 w-3 cursor-nesw-resize rounded-full border border-[#141210] bg-[#c3a47b] shadow"
                       />
                       {/* Bottom-Left */}
                       <div
                         onClick={(e) => e.stopPropagation()}
                         onPointerDown={(e) => handleResizeHandleDown(e, img, "sw")}
-                        className="absolute -bottom-1.5 -left-1.5 h-3 w-3 cursor-nesw-resize rounded-full border border-zinc-900 bg-zinc-100 shadow"
+                        className="absolute -bottom-1.5 -left-1.5 h-3 w-3 cursor-nesw-resize rounded-full border border-[#141210] bg-[#c3a47b] shadow"
                       />
                       {/* Bottom-Right */}
                       <div
                         onClick={(e) => e.stopPropagation()}
                         onPointerDown={(e) => handleResizeHandleDown(e, img, "se")}
-                        className="absolute -bottom-1.5 -right-1.5 h-3 w-3 cursor-nwse-resize rounded-full border border-zinc-900 bg-zinc-100 shadow"
+                        className="absolute -bottom-1.5 -right-1.5 h-3 w-3 cursor-nwse-resize rounded-full border border-[#141210] bg-[#c3a47b] shadow"
                       />
 
                       {/* Nút xóa ảnh nổi bên trên */}
@@ -1037,7 +1038,7 @@ export function Whiteboard({ open, onClose, roomCode, socket }) {
                           handleDeleteSelectedImage();
                         }}
                         title="Xóa ảnh này (Delete)"
-                        className="absolute -top-7 right-0 flex h-6 w-6 items-center justify-center rounded-md bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-rose-400 hover:bg-zinc-800 shadow"
+                        className="absolute -top-7 right-0 flex h-6 w-6 items-center justify-center rounded-md bg-[#1e1916] border border-[#3a3128] text-[#a89b8d] hover:text-rose-400 hover:bg-[#26201c] shadow"
                       >
                         <Trash className="h-3 w-3" strokeWidth={1.75} />
                       </button>

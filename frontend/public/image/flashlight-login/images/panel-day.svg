@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="glass-ridge-back" x1="0" y1="0" x2=".3" y2="1">
+      <stop stop-color="#e1fbff" stop-opacity=".76"/>
+      <stop stop-color="#e1fbff" offset=".16" stop-opacity=".35"/>
+      <stop stop-color="#679cba" offset="1" stop-opacity=".55"/>
+    </linearGradient>
+    <linearGradient id="glass-ridge-front" x1="0" y1="0" x2=".25" y2="1">
+      <stop stop-color="#c0e9ee" stop-opacity=".88"/>
+      <stop stop-color="#c0e9ee" offset=".12" stop-opacity=".48"/>
+      <stop stop-color="#346e8b" offset="1" stop-opacity=".75"/>
+    </linearGradient>
+    <linearGradient id="glass-snow" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#f2fcff" stop-opacity=".75"/>
+      <stop stop-color="#d3efff" offset="1" stop-opacity=".12"/>
+    </linearGradient>
+    <linearGradient id="glass-water" x1="0" y1="0" x2=".15" y2="1">
+      <stop stop-color="#c9f4f0" stop-opacity=".67"/>
+      <stop stop-color="#c9f4f0" offset=".08" stop-opacity=".26"/>
+      <stop stop-color="#387a96" offset=".6" stop-opacity=".68"/>
+      <stop stop-color="#387a96" offset="1" stop-opacity=".88"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#glass-ridge-back)" stroke="#f4ffff" stroke-opacity=".65" stroke-width="1" stroke-linejoin="round" vector-effect="non-scaling-stroke" d="M0 235 51 173 91 207 156 130 228 211 282 151 351 207 400 171V340H0Z"/>
+  <path fill="url(#glass-snow)" stroke="#ffffff" stroke-opacity=".46" stroke-width=".6" opacity="1" d="m126 166 30-36 39 44-29-13-11 15-11-20ZM262 174l20-23 30 24-25-7-7 12-8-11Z"/>
+  <path fill="url(#glass-ridge-front)" fill-opacity=".83" stroke="#f4ffff" stroke-opacity=".65" stroke-width="1" stroke-linejoin="round" vector-effect="non-scaling-stroke" d="M0 234 41 219 84 251 139 205 209 266 253 227 306 244 354 211 400 226V341H0Z"/>
+  <path fill="url(#glass-ridge-front)" fill-opacity=".94" stroke="#f4ffff" stroke-opacity=".65" stroke-width="1" stroke-linejoin="round" vector-effect="non-scaling-stroke" d="M0 264 58 273 101 250 161 294 229 271 303 287 354 252 400 262V341H0Z"/>
+  <path fill="url(#glass-water)" stroke="#f4ffff" stroke-opacity=".65" stroke-width="1" stroke-linejoin="round" vector-effect="non-scaling-stroke" d="M0 301Q104 288 203 305T400 298V500H0Z"/>
+  <g opacity=".55" stroke="#ffe8b2" stroke-linecap="round" fill="none">
+    <path d="M93 315h35m-49 11h61m-48 12h39m-62 14h81m-48 13h42m-69 16h86" stroke-width="2"/>
+  </g>
+  <g stroke="#a6d4d9" stroke-opacity=".13" fill="none">
+    <path d="M12 342h42m113-14h48m122 16h52M21 377h33m120-17h39m128 22h47M72 412h75m102-8h67M17 452h49m121-16h72m54 26h62"/>
+  </g>
+  <path fill="#154253" fill-opacity=".48" d="M0 289Q41 286 90 310L27 327 0 324ZM400 283q-31 8-82 33l82 19ZM0 470q86-27 163 30H0ZM400 462q-53 2-103 38h103Z"/>
+  <g fill="#154253" fill-opacity=".48">
+    <path d="M16 236 2 267h9L0 287h31l-12-20h9ZM43 251l-10 24h6l-10 20h28l-12-20h8ZM378 232l-13 32h8l-13 26h37l-15-26h9ZM351 259l-9 21h6l-10 18h28l-11-18h6Z"/>
+  </g>
+</svg>

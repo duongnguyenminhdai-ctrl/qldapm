@@ -435,7 +435,7 @@ export function AmbientSoundWidget({ className }) {
           role="dialog"
           aria-label="Không gian âm thanh tập trung"
           className={cn(
-            "surface-blur absolute bottom-full mb-3 z-[60] flex flex-col overflow-hidden rounded-2xl border border-zinc-800/90 bg-zinc-950/95 p-0 shadow-2xl backdrop-blur-2xl ring-1 ring-white/5",
+            "surface-blur absolute bottom-full mb-3 z-[60] flex flex-col overflow-hidden rounded-2xl border border-stone-200/90 bg-[#FAF8F5]/98 text-[#2D241E] p-0 shadow-2xl backdrop-blur-sm ring-1 ring-stone-200/50 dark:border-zinc-800/90 dark:bg-zinc-950/95 dark:text-zinc-100 dark:ring-white/5",
             // Canh lề thông minh cho mobile / desktop
             "-right-16 sm:-right-8 md:left-1/2 md:-translate-x-1/2",
             "w-[340px] xs:w-[375px] sm:w-[410px] max-w-[calc(100vw-24px)]",
@@ -443,28 +443,28 @@ export function AmbientSoundWidget({ className }) {
           )}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-zinc-800/80 px-4 py-3">
+          <div className="flex items-center justify-between border-b border-stone-200 dark:border-zinc-800/80 px-4 py-3">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-stone-200 border border-stone-300 text-stone-700 dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-200">
                 <Headphones className="h-4 w-4" strokeWidth={ICON_STROKE} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold tracking-tight text-zinc-100">
+                  <h3 className="text-sm font-semibold tracking-tight text-[#2D241E] dark:text-zinc-100">
                     Âm thanh tập trung
                   </h3>
                   {isActuallyPlaying ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400 border border-emerald-500/20">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       {activeCount} đang phát
                     </span>
                   ) : (
-                    <span className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] font-medium text-zinc-400">
+                    <span className="rounded-full bg-stone-200 text-stone-600 dark:bg-zinc-800/80 px-2 py-0.5 text-[10px] font-medium dark:text-zinc-400">
                       Sẵn sàng
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-zinc-400">
+                <p className="text-[11px] text-stone-500 dark:text-zinc-400">
                   Phát cục bộ trên thiết bị của bạn
                 </p>
               </div>
@@ -479,8 +479,8 @@ export function AmbientSoundWidget({ className }) {
                     onClick={handleToggleMasterMute}
                     aria-label={soundState.isMutedAll ? "Bật âm lượng tổng" : "Tắt âm lượng tổng"}
                     className={cn(
-                      "flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200",
-                      soundState.isMutedAll && "bg-rose-500/15 text-rose-400 hover:bg-rose-500/20 hover:text-rose-300"
+                      "flex h-8 w-8 items-center justify-center rounded-lg text-stone-500 transition hover:bg-stone-200 hover:text-[#2D241E] dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-200",
+                      soundState.isMutedAll && "bg-rose-500/15 text-rose-500 dark:text-rose-400 hover:bg-rose-500/20"
                     )}
                   >
                     {soundState.isMutedAll ? (
@@ -500,7 +500,7 @@ export function AmbientSoundWidget({ className }) {
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Đóng bảng âm thanh"
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-stone-400 transition hover:bg-stone-200 hover:text-[#2D241E] dark:text-zinc-500 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
               >
                 <X className="h-4 w-4" strokeWidth={ICON_STROKE} />
               </button>
@@ -508,9 +508,9 @@ export function AmbientSoundWidget({ className }) {
           </div>
 
           {/* Quick Presets Bar */}
-          <div className="flex items-center gap-1.5 overflow-x-auto px-4 py-2 border-b border-zinc-800/50 bg-zinc-900/40 scrollbar-quiet">
-            <span className="flex items-center gap-1 text-[11px] font-medium text-zinc-500 shrink-0 mr-0.5">
-              <Sparkles className="h-3 w-3 text-amber-400" strokeWidth={ICON_STROKE} />
+          <div className="flex items-center gap-1.5 overflow-x-auto px-4 py-2 border-b border-stone-200 bg-stone-100/60 dark:border-zinc-800/50 dark:bg-zinc-900/40 scrollbar-quiet">
+            <span className="flex items-center gap-1 text-[11px] font-medium text-stone-500 dark:text-zinc-500 shrink-0 mr-0.5">
+              <Sparkles className="h-3 w-3 text-amber-500" strokeWidth={ICON_STROKE} />
               Gợi ý:
             </span>
             {PRESETS.map((p) => {
@@ -528,8 +528,8 @@ export function AmbientSoundWidget({ className }) {
                   className={cn(
                     "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition active:scale-[0.98]",
                     isPresetActive
-                      ? "bg-zinc-200 text-zinc-950 shadow-sm"
-                      : "bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700/80 hover:text-zinc-100"
+                      ? "bg-[#b3894e] text-white dark:bg-zinc-200 dark:text-zinc-950 shadow-sm font-semibold"
+                      : "bg-stone-200/70 text-stone-700 hover:bg-stone-200 dark:bg-zinc-800/80 dark:text-zinc-300 dark:hover:bg-zinc-700/80 dark:hover:text-zinc-100"
                   )}
                   title={p.description}
                 >
@@ -555,8 +555,8 @@ export function AmbientSoundWidget({ className }) {
                   className={cn(
                     "group relative rounded-xl border p-2.5 transition duration-taste ease-taste",
                     isPlayingThis
-                      ? "border-zinc-700/80 bg-zinc-900/90 shadow-sm"
-                      : "border-zinc-800/50 bg-zinc-900/30 hover:border-zinc-800 hover:bg-zinc-900/60"
+                      ? "border-[#b3894e]/50 bg-amber-50/70 dark:border-zinc-700/80 dark:bg-zinc-900/90 shadow-sm"
+                      : "border-stone-200/80 bg-stone-100/40 hover:border-stone-300 hover:bg-stone-100/80 dark:border-zinc-800/50 dark:bg-zinc-900/30 dark:hover:border-zinc-800 dark:hover:bg-zinc-900/60"
                   )}
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -566,8 +566,8 @@ export function AmbientSoundWidget({ className }) {
                         className={cn(
                           "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition",
                           isPlayingThis
-                            ? "border-emerald-500/40 bg-emerald-950/40 text-emerald-400"
-                            : "border-zinc-800 bg-zinc-900 text-zinc-400 group-hover:text-zinc-200"
+                            ? "border-emerald-500/40 bg-emerald-100/80 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                            : "border-stone-200 bg-stone-200/60 text-stone-500 group-hover:text-stone-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 dark:group-hover:text-zinc-200"
                         )}
                       >
                         <IconComp className="h-4 w-4" strokeWidth={ICON_STROKE} />
@@ -575,9 +575,9 @@ export function AmbientSoundWidget({ className }) {
                         {/* Equalizer animation mini bars */}
                         {isPlayingThis && (
                           <div className="absolute inset-0 flex items-end justify-center gap-[2px] pb-1.5 opacity-60">
-                            <span className="w-[2px] bg-emerald-400 rounded-full animate-eq-1" />
-                            <span className="w-[2px] bg-emerald-400 rounded-full animate-eq-2" />
-                            <span className="w-[2px] bg-emerald-400 rounded-full animate-eq-3" />
+                            <span className="w-[2px] bg-emerald-500 rounded-full animate-eq-1" />
+                            <span className="w-[2px] bg-emerald-500 rounded-full animate-eq-2" />
+                            <span className="w-[2px] bg-emerald-500 rounded-full animate-eq-3" />
                           </div>
                         )}
                       </div>
@@ -587,16 +587,16 @@ export function AmbientSoundWidget({ className }) {
                           <span
                             className={cn(
                               "text-xs font-semibold truncate",
-                              isPlayingThis ? "text-zinc-100" : "text-zinc-300"
+                              isPlayingThis ? "text-[#2D241E] dark:text-zinc-100" : "text-stone-700 dark:text-zinc-300"
                             )}
                           >
                             {track.name}
                           </span>
-                          <span className="text-[10px] text-zinc-400">
+                          <span className="text-[10px] text-stone-500 dark:text-zinc-400">
                             {state.volume}%
                           </span>
                         </div>
-                        <p className="text-[11px] text-zinc-400 truncate">
+                        <p className="text-[11px] text-stone-500 dark:text-zinc-400 truncate">
                           {track.description}
                         </p>
                       </div>

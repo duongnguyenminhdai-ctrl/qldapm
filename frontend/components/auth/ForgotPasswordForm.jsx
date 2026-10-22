@@ -5,19 +5,18 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FlashlightPasswordField, OwlMascot } from "@/components/auth/FlashlightPasswordField";
 import { OtpInput } from "@/components/auth/OtpInput";
 import { authApi } from "@/lib/api";
 import {
-  ArrowLeft,
-  Mail,
   KeyRound,
   CheckCircle2,
-  Loader2,
   ShieldCheck,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 
-export function ForgotPasswordForm() {
+export function ForgotPasswordForm({ onSwitchToLogin, onSwitchToRegister } = {}) {
   const router = useRouter();
 
   // steps: 'EMAIL' | 'OTP' | 'NEW_PASSWORD' | 'SUCCESS'
@@ -191,52 +190,89 @@ export function ForgotPasswordForm() {
       {step === "EMAIL" && (
         <form onSubmit={handleRequestOtp} className="space-y-4">
           <div className="text-left space-y-1 mb-2">
-            <h2 className="text-lg font-semibold text-zinc-100">
+            <h2 className="font-serif text-xl font-semibold text-[#f5ede3]">
               Quên mật khẩu?
             </h2>
-            <p className="text-xs text-zinc-400 leading-relaxed">
+            <p className="text-xs text-[#a89b8d] leading-relaxed">
               Nhập địa chỉ email đăng ký của bạn. Chúng tôi sẽ gửi mã xác thực OTP 6 số để bạn thiết lập lại mật khẩu.
             </p>
           </div>
 
-          <Input
-            id="forgot-email"
-            type="email"
-            label="Email tài khoản"
-            placeholder="ban@email.com"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              clearError();
-            }}
-            required
-            autoFocus
-          />
+          {/* Ô Email: Không gắn đèn pin, con cú đậu gọn gàng trên nhãn */}
+          <div className="relative">
+            <div className="flex items-center justify-between mb-1.5">
+              <label
+                htmlFor="forgot-email"
+                className="text-xs font-medium text-[#2D241E] dark:text-[#d8c8b4]"
+              >
+                Email tài khoản
+              </label>
+              <div className="owl-wrapper scale-75 origin-bottom-right">
+                <OwlMascot />
+              </div>
+            </div>
+            <Input
+              id="forgot-email"
+              type="email"
+              placeholder="ban@email.com"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                clearError();
+              }}
+              required
+              autoFocus
+            />
+          </div>
 
           <Button
             type="submit"
-            className="w-full mt-2"
-            size="lg"
             disabled={loading}
+            className="w-full h-11 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-600 hover:via-amber-500 hover:to-amber-600 text-stone-950 font-serif font-bold text-sm tracking-wide rounded-xl shadow-md hover:shadow-amber-500/20 active:scale-[0.99] transition-all cursor-pointer mt-2"
           >
             {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-stone-950" />
                 <span>Đang gửi mã xác thực...</span>
-              </>
+              </span>
             ) : (
-              <span>Gửi mã xác nhận</span>
+              "Gửi mã xác nhận"
             )}
           </Button>
 
-          <div className="pt-2 text-center">
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Quay lại trang Đăng nhập</span>
-            </Link>
+          <div className="pt-4 flex flex-col items-center gap-2 text-xs text-[#75695e]">
+            <p>
+              Đã nhớ mật khẩu?{" "}
+              {onSwitchToLogin ? (
+                <button
+                  type="button"
+                  onClick={onSwitchToLogin}
+                  className="font-medium text-[#c3a47b] hover:text-[#d6b88f] transition cursor-pointer"
+                >
+                  Đăng nhập ngay
+                </button>
+              ) : (
+                <Link href="/login" className="font-medium text-[#c3a47b] hover:text-[#d6b88f]">
+                  Đăng nhập ngay
+                </Link>
+              )}
+            </p>
+            <p>
+              Chưa có tài khoản?{" "}
+              {onSwitchToRegister ? (
+                <button
+                  type="button"
+                  onClick={onSwitchToRegister}
+                  className="font-medium text-[#c3a47b] hover:text-[#d6b88f] transition cursor-pointer"
+                >
+                  Đăng ký tài khoản
+                </button>
+              ) : (
+                <Link href="/register" className="font-medium text-[#c3a47b] hover:text-[#d6b88f]">
+                  Đăng ký tài khoản
+                </Link>
+              )}
+            </p>
           </div>
         </form>
       )}
@@ -245,13 +281,13 @@ export function ForgotPasswordForm() {
       {step === "OTP" && (
         <div className="space-y-5">
           <div className="text-left space-y-1">
-            <h2 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-purple-400" />
+            <h2 className="text-lg font-semibold text-[#f5ede3] flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-[#c3a47b]" />
               <span>Xác thực mã OTP</span>
             </h2>
-            <p className="text-xs text-zinc-400 leading-relaxed">
+            <p className="text-xs text-[#a89b8d] leading-relaxed">
               Mã xác nhận 6 số đã được gửi tới email{" "}
-              <strong className="text-zinc-200 font-mono">{email}</strong>. Mã có hiệu lực trong 5 phút.
+              <strong className="text-[#f5ede3] font-mono">{email}</strong>. Mã có hiệu lực trong 5 phút.
             </p>
           </div>
 
@@ -272,17 +308,16 @@ export function ForgotPasswordForm() {
           <Button
             type="button"
             onClick={() => handleVerifyOtp()}
-            className="w-full"
-            size="lg"
             disabled={loading || otp.length < 6}
+            className="w-full h-11 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-600 hover:via-amber-500 hover:to-amber-600 text-stone-950 font-serif font-bold text-sm tracking-wide rounded-xl shadow-md hover:shadow-amber-500/20 active:scale-[0.99] transition-all cursor-pointer"
           >
             {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-stone-950" />
                 <span>Đang kiểm tra mã...</span>
-              </>
+              </span>
             ) : (
-              <span>Tiếp tục đặt mật khẩu</span>
+              "Tiếp tục đặt mật khẩu"
             )}
           </Button>
 
@@ -293,16 +328,26 @@ export function ForgotPasswordForm() {
                 setStep("EMAIL");
                 clearError();
               }}
-              className="text-zinc-500 hover:text-zinc-300 transition"
+              className="text-[#75695e] hover:text-[#f5ede3] transition"
             >
               Đổi email khác
             </button>
-            <Link
-              href="/login"
-              className="text-zinc-500 hover:text-zinc-300 transition"
-            >
-              Hủy bỏ
-            </Link>
+            {onSwitchToLogin ? (
+              <button
+                type="button"
+                onClick={onSwitchToLogin}
+                className="text-[#75695e] hover:text-[#f5ede3] transition cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="text-[#75695e] hover:text-[#f5ede3] transition"
+              >
+                Hủy bỏ
+              </Link>
+            )}
           </div>
         </div>
       )}
@@ -311,18 +356,19 @@ export function ForgotPasswordForm() {
       {step === "NEW_PASSWORD" && (
         <form onSubmit={handleResetPassword} className="space-y-4">
           <div className="text-left space-y-1 mb-2">
-            <h2 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
-              <KeyRound className="h-5 w-5 text-purple-400" />
+            <h2 className="text-lg font-semibold text-[#f5ede3] flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-[#c3a47b]" />
               <span>Đặt mật khẩu mới</span>
             </h2>
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              Tạo mật khẩu an toàn mới cho tài khoản <strong className="text-zinc-200">{email}</strong>.
+            <p className="text-xs text-[#a89b8d] leading-relaxed">
+              Tạo mật khẩu an toàn mới cho tài khoản <strong className="text-[#f5ede3]">{email}</strong>.
             </p>
           </div>
 
-          <Input
+          {/* Ô Mật khẩu mới: Đèn pin cố định, hiển thị trọn vẹn khi hover/focus */}
+          <FlashlightPasswordField
             id="reset-new-password"
-            type="password"
+            name="newPassword"
             label="Mật khẩu mới"
             placeholder="Tối thiểu 6 ký tự"
             value={newPassword}
@@ -334,9 +380,10 @@ export function ForgotPasswordForm() {
             autoFocus
           />
 
-          <Input
+          {/* Ô Xác nhận mật khẩu: Đồng bộ hoàn toàn cùng component và style */}
+          <FlashlightPasswordField
             id="reset-confirm-password"
-            type="password"
+            name="confirmPassword"
             label="Xác nhận mật khẩu mới"
             placeholder="Nhập lại mật khẩu mới"
             value={confirmPassword}
@@ -349,19 +396,37 @@ export function ForgotPasswordForm() {
 
           <Button
             type="submit"
-            className="w-full mt-2"
-            size="lg"
             disabled={loading}
+            className="w-full h-11 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-600 hover:via-amber-500 hover:to-amber-600 text-stone-950 font-serif font-bold text-sm tracking-wide rounded-xl shadow-md hover:shadow-amber-500/20 active:scale-[0.99] transition-all cursor-pointer mt-2"
           >
             {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-stone-950" />
                 <span>Đang cập nhật mật khẩu...</span>
-              </>
+              </span>
             ) : (
-              <span>Hoàn tất đặt lại mật khẩu</span>
+              "Hoàn tất đặt lại mật khẩu"
             )}
           </Button>
+
+          <div className="pt-2 text-center">
+            {onSwitchToLogin ? (
+              <button
+                type="button"
+                onClick={onSwitchToLogin}
+                className="text-xs text-[#75695e] hover:text-[#f5ede3] transition cursor-pointer"
+              >
+                Hủy bỏ và quay lại Đăng nhập
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="text-xs text-[#75695e] hover:text-[#f5ede3] transition"
+              >
+                Hủy bỏ và quay lại Đăng nhập
+              </Link>
+            )}
+          </div>
         </form>
       )}
 
@@ -383,9 +448,11 @@ export function ForgotPasswordForm() {
 
           <Button
             type="button"
-            className="w-full mt-2"
-            size="lg"
-            onClick={() => router.push("/login")}
+            className="w-full h-11 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-600 hover:via-amber-500 hover:to-amber-600 text-stone-950 font-serif font-bold text-sm tracking-wide rounded-xl shadow-md hover:shadow-amber-500/20 active:scale-[0.99] transition-all cursor-pointer mt-2"
+            onClick={() => {
+              if (onSwitchToLogin) onSwitchToLogin();
+              else router.push("/login");
+            }}
           >
             Đăng nhập ngay
           </Button>
@@ -394,3 +461,5 @@ export function ForgotPasswordForm() {
     </div>
   );
 }
+
+export default ForgotPasswordForm;

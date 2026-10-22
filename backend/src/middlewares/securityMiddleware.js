@@ -12,6 +12,10 @@ const securityHeaders = (req, res, next) => {
     "Permissions-Policy",
     "camera=(self), microphone=(self), display-capture=(self), geolocation=()"
   );
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https: http:; script-src 'self' 'unsafe-eval' 'unsafe-inline' https: http:; style-src 'self' 'unsafe-inline' https: http:; img-src 'self' data: blob: https: http:; media-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data: https: http:; frame-src 'self' https: http:;"
+  );
 
   if (process.env.NODE_ENV === "production") {
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
@@ -35,14 +39,11 @@ setInterval(() => {
 
 /**
  * Rate Limiter cho các endpoint xác thực nhạy cảm (Login, Register, OTP).
- * Tối đa 25 request trong 5 phút trên một địa chỉ IP.
+ * Tối đa 30 request trong 5 phút trên một địa chỉ IP.
  */
 const authRateLimiter = (req, res, next) => {
-  const ip =
-    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-    req.socket?.remoteAddress ||
-    req.ip ||
-    "127.0.0.1";
+  // Lấy IP từ req.ip (đã bật trust proxy ở Express) để chống bypass qua header X-Forwarded-For giả
+  const ip = req.ip || req.socket?.remoteAddress || "127.0.0.1";
 
   const now = Date.now();
   const windowMs = 5 * 60 * 1000; // 5 phút
@@ -70,7 +71,44 @@ const authRateLimiter = (req, res, next) => {
   next();
 };
 
+// Rate Limiter cho AI Tutor (Google Gemini API Quota Protection)
+const aiRequests = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, data] of aiRequests.entries()) {
+    if (now > data.resetTime) {
+      aiRequests.delete(key);
+    }
+  }
+}, 60 * 1000);
+
+const aiRateLimiter = (req, res, next) => {
+  const identifier = String(req.user?.id || req.ip || "unknown");
+  const now = Date.now();
+  const windowMs = 60 * 1000; // 1 phút
+  const maxRequests = 20; // 20 requests/phút
+
+  const record = aiRequests.get(identifier) || { count: 0, resetTime: now + windowMs };
+  if (now > record.resetTime) {
+    record.count = 1;
+    record.resetTime = now + windowMs;
+  } else {
+    record.count += 1;
+  }
+  aiRequests.set(identifier, record);
+
+  if (record.count > maxRequests) {
+    return res.status(429).json({
+      success: false,
+      message: "Bạn đã gửi quá nhiều yêu cầu tới AI Tutor trong thời gian ngắn. Vui lòng chờ 1 phút trước khi tiếp tục.",
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   securityHeaders,
   authRateLimiter,
+  aiRateLimiter,
 };

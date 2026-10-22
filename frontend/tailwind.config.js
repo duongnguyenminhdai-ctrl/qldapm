@@ -42,6 +42,22 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // ThreeUI Editorial Warm Dark & Vintage Ochre Gold Palette
+        threeui: {
+          bg: "#141210",
+          bgDeep: "#181513",
+          surface: "#201b18",
+          surfaceHover: "#29231f",
+          modal: "#1c1815",
+          accent: "#c3a47b",
+          accentHover: "#d6b88f",
+          accentBright: "#e8cca4",
+          border: "#3a3128",
+          borderFocus: "#5c4e40",
+          title: "#f5ede3",
+          body: "#a89b8d",
+          muted: "#75695e",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -51,6 +67,16 @@ module.exports = {
       fontFamily: {
         sans: ["var(--font-geist-sans)", "system-ui", "sans-serif"],
         mono: ["var(--font-geist-mono)", "ui-monospace", "monospace"],
+        serif: [
+          "var(--font-serif)",
+          '"Iowan Old Style"',
+          '"Palatino Linotype"',
+          "Palatino",
+          '"Book Antiqua"',
+          "Baskerville",
+          "Georgia",
+          "serif",
+        ],
       },
       transitionTimingFunction: {
         taste: "cubic-bezier(0.16, 1, 0.3, 1)",

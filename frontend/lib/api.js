@@ -12,7 +12,13 @@ export function getAuthToken() {
   if (typeof window === "undefined") {
     return null;
   }
-  return window.localStorage.getItem(TOKEN_KEY);
+  const token = window.localStorage.getItem(TOKEN_KEY);
+  if (token) return token;
+  if (typeof document !== "undefined" && document.cookie) {
+    const match = document.cookie.match(new RegExp(`(?:^|; )${TOKEN_KEY}=([^;]*)`));
+    if (match) return decodeURIComponent(match[1]);
+  }
+  return null;
 }
 
 export function setAuthSession({ token, user }) {
@@ -24,12 +30,14 @@ export function setAuthSession({ token, user }) {
     window.localStorage.setItem(USER_KEY, JSON.stringify(user));
     try {
       window.dispatchEvent(new CustomEvent("vsr:user-updated", { detail: user }));
-      if (user.equippedTitle || user.title) {
+      if (user.equippedTitle || user.title || user.activeTitle) {
+        const titleValue = user.equippedTitle || user.activeTitle || user.title;
         window.dispatchEvent(
           new CustomEvent("vsr:title-updated", {
             detail: {
-              equippedTitle: user.equippedTitle || user.title,
-              title: user.title || user.equippedTitle,
+              equippedTitle: titleValue,
+              activeTitle: titleValue,
+              title: titleValue,
               user,
             },
           })
@@ -60,22 +68,38 @@ export function getStoredUser() {
 
 export function setStoredUser(user) {
   if (typeof window === "undefined" || !user) return;
-  window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+  const prev = getStoredUser() || {};
+  const merged = { ...prev, ...user };
+  if (merged.isPro !== undefined && merged.isVip === undefined) {
+    merged.isVip = Boolean(merged.isPro);
+  }
+  if (merged.proExpiresAt && !merged.vipExpiresAt) {
+    merged.vipExpiresAt = merged.proExpiresAt;
+  }
+  if (merged.vipExpiresAt && !merged.proExpiresAt) {
+    merged.proExpiresAt = merged.vipExpiresAt;
+  }
+  window.localStorage.setItem(USER_KEY, JSON.stringify(merged));
   try {
-    window.dispatchEvent(new CustomEvent("vsr:user-updated", { detail: user }));
-    if (user.equippedTitle || user.title) {
+    window.dispatchEvent(new CustomEvent("vsr:user-updated", { detail: merged }));
+    if (merged.equippedTitle || merged.title || merged.activeTitle) {
+      const titleValue = merged.equippedTitle || merged.activeTitle || merged.title;
       window.dispatchEvent(
         new CustomEvent("vsr:title-updated", {
           detail: {
-            equippedTitle: user.equippedTitle || user.title,
-            title: user.title || user.equippedTitle,
-            user,
+            equippedTitle: titleValue,
+            activeTitle: titleValue,
+            title: titleValue,
+            user: merged,
           },
         })
       );
     }
   } catch (_) {}
 }
+
+// Bảng theo dõi các request GET đang bay (in-flight request deduplication) để tránh gọi trùng lặp
+const inFlightGetRequests = new Map();
 
 /**
  * Gửi request JSON tới backend.
@@ -102,44 +126,100 @@ export async function apiClient(path, options = {}) {
 
   const url = `${API_URL.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 
-  let response;
-  try {
-    response = await fetch(url, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+  // Nếu là request GET và đang có 1 request giống hệt đang xử lý dở -> dùng chung promise
+  const isGet = method.toUpperCase() === "GET";
+  const dedupeKey = isGet ? `${url}?auth=${authToken || ""}` : null;
+  if (isGet && inFlightGetRequests.has(dedupeKey)) {
+    return inFlightGetRequests.get(dedupeKey);
+  }
+
+  const executeRequest = async () => {
+    let response;
+    try {
+      response = await fetch(url, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+    } catch (fetchErr) {
+      const err = new Error(
+        "Không thể kết nối tới server backend (http://localhost:5000). Vui lòng đảm bảo backend đang chạy."
+      );
+      err.status = 503;
+      err.originalError = fetchErr;
+      throw err;
+    }
+
+    let data = null;
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      data = await response.json();
+    }
+
+    // Tự động cập nhật token mới nếu server đã làm mới phiên
+    const refreshedToken = response.headers.get("x-refreshed-token");
+    if (refreshedToken && typeof window !== "undefined") {
+      window.localStorage.setItem(TOKEN_KEY, refreshedToken);
+    }
+
+    if (!response.ok) {
+      // Bắt lỗi tài khoản bị khóa (403 Forbidden hoặc 401 có thông tin bị khóa)
+      const isAccountBanned =
+        (response.status === 403 || response.status === 401) &&
+        (data?.code === "ACCOUNT_BANNED" ||
+          data?.isBanned ||
+          data?.message?.toLowerCase().includes("bị khóa") ||
+          data?.message?.toLowerCase().includes("banned"));
+
+      if (isAccountBanned && typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("account_banned", {
+            detail: {
+              reason:
+                data?.message ||
+                "Tài khoản của bạn đã bị khóa do vi phạm tiêu chuẩn cộng đồng hoặc theo quyết định của Quản trị viên.",
+            },
+          })
+        );
+      }
+
+      // Xử lý 401 Unauthorized (Người dùng không tồn tại, token hết hạn, hoặc bị thu hồi)
+      if (response.status === 401 && typeof window !== "undefined") {
+        clearAuthSession();
+        const currentPath = window.location.pathname;
+        const isProtectedPage =
+          currentPath.startsWith("/dashboard") ||
+          currentPath.startsWith("/profile") ||
+          currentPath.startsWith("/admin") ||
+          currentPath.startsWith("/room");
+
+        if (isProtectedPage && !window.__isRedirectingToLogin) {
+          window.__isRedirectingToLogin = true;
+          window.location.href = "/login?session_expired=true";
+        }
+      }
+
+      const error = new Error(
+        data?.message || `Request failed with status ${response.status}`
+      );
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+
+    return data;
+  };
+
+  const promise = executeRequest();
+
+  if (isGet && dedupeKey) {
+    inFlightGetRequests.set(dedupeKey, promise);
+    promise.finally(() => {
+      inFlightGetRequests.delete(dedupeKey);
     });
-  } catch (fetchErr) {
-    const err = new Error(
-      "Không thể kết nối tới server backend (http://localhost:5000). Vui lòng đảm bảo backend đang chạy."
-    );
-    err.status = 503;
-    err.originalError = fetchErr;
-    throw err;
   }
 
-  let data = null;
-  const contentType = response.headers.get("content-type");
-  if (contentType && contentType.includes("application/json")) {
-    data = await response.json();
-  }
-
-  // Tự động cập nhật token mới nếu server đã làm mới phiên
-  const refreshedToken = response.headers.get("x-refreshed-token");
-  if (refreshedToken && typeof window !== "undefined") {
-    window.localStorage.setItem(TOKEN_KEY, refreshedToken);
-  }
-
-  if (!response.ok) {
-    const error = new Error(
-      data?.message || `Request failed with status ${response.status}`
-    );
-    error.status = response.status;
-    error.data = data;
-    throw error;
-  }
-
-  return data;
+  return promise;
 }
 
 export const authApi = {
@@ -170,6 +250,8 @@ export const authApi = {
   // Google OAuth2
   googleLogin: (payload) =>
     apiClient("/auth/google", { method: "POST", body: payload }),
+  // Trang bị danh hiệu
+  equipTitle: (payloadOrId) => titlesApi.equip(payloadOrId),
 };
 
 export const roomsApi = {
@@ -197,6 +279,9 @@ export const roomsApi = {
   /** Tham gia phòng bằng mã */
   join: (payload) =>
     apiClient("/rooms/join", { method: "POST", body: payload }),
+  /** Rời phòng học */
+  leave: (payload) =>
+    apiClient("/rooms/leave", { method: "POST", body: payload }),
   /** Lấy thông tin phòng theo roomCode hoặc ID */
   getByCode: (roomCode) => apiClient(`/rooms/${roomCode}`),
   /** Alias tương thích */
@@ -214,19 +299,40 @@ export const livekitApi = {
 };
 
 export const friendsApi = {
-  /** Gửi lời mời kết bạn qua email */
-  sendRequest: (email) =>
-    apiClient("/friends/request", { method: "POST", body: { email } }),
+  /** Gửi lời mời kết bạn qua email hoặc userId/recipientId */
+  sendRequest: (emailOrPayload) => {
+    const body = typeof emailOrPayload === "object" ? emailOrPayload : { email: emailOrPayload };
+    return apiClient("/friends/request", { method: "POST", body });
+  },
   /** Lấy danh sách lời mời đang chờ */
   getRequests: () => apiClient("/friends/requests"),
   /** Chấp nhận kết bạn */
-  acceptRequest: (fromUserId) =>
-    apiClient("/friends/accept", { method: "POST", body: { fromUserId } }),
+  acceptRequest: (fromUserIdOrPayload) => {
+    const fromUserId =
+      typeof fromUserIdOrPayload === "object"
+        ? fromUserIdOrPayload?.fromUserId || fromUserIdOrPayload?.senderId
+        : fromUserIdOrPayload;
+    return apiClient("/friends/accept", {
+      method: "POST",
+      body: { fromUserId, senderId: fromUserId },
+    });
+  },
   /** Từ chối kết bạn */
-  rejectRequest: (fromUserId) =>
-    apiClient("/friends/reject", { method: "POST", body: { fromUserId } }),
+  rejectRequest: (fromUserIdOrPayload) => {
+    const fromUserId =
+      typeof fromUserIdOrPayload === "object"
+        ? fromUserIdOrPayload?.fromUserId || fromUserIdOrPayload?.senderId
+        : fromUserIdOrPayload;
+    return apiClient("/friends/reject", {
+      method: "POST",
+      body: { fromUserId, senderId: fromUserId },
+    });
+  },
   /** Lấy danh sách bạn bè */
   list: () => apiClient("/friends/list"),
+  /** Hủy kết bạn */
+  unfriend: (friendId) =>
+    apiClient("/friends/unfriend", { method: "POST", body: { friendId } }),
 };
 
 export const messagesApi = {
@@ -243,10 +349,12 @@ export const messagesApi = {
     apiClient("/messages/direct", { method: "POST", body: { friendId } }),
   /** Lấy tin nhắn chi tiết */
   getMessages: (conversationId) => apiClient(`/messages/${conversationId}`),
-  /** Gửi tin nhắn mới (hỗ trợ cả text và image) */
+  /** Gửi tin nhắn mới (hỗ trợ text, voice message, image và file) */
   sendMessage: (conversationId, textOrPayload, image) => {
     let body = {};
-    if (typeof textOrPayload === "object" && textOrPayload !== null) {
+    if (typeof conversationId === "object" && conversationId !== null) {
+      body = { ...conversationId };
+    } else if (typeof textOrPayload === "object" && textOrPayload !== null) {
       body = { conversationId, ...textOrPayload };
     } else {
       body = { conversationId, text: textOrPayload, image };
@@ -256,6 +364,12 @@ export const messagesApi = {
       body,
     });
   },
+  /** Thả hoặc đổi/hủy cảm xúc Emoji trên tin nhắn */
+  reactMessage: (messageId, emoji) =>
+    apiClient(`/messages/${messageId}/react`, {
+      method: "POST",
+      body: { emoji },
+    }),
   /** Thu hồi tin nhắn tương tự Messenger */
   revokeMessage: (messageId) =>
     apiClient(`/messages/${messageId}/revoke`, {
@@ -281,8 +395,37 @@ export const paymentApi = {
 };
 
 export const adminApi = {
-  /** Lấy thống kê tổng quan */
-  getStats: () => apiClient("/admin/stats"),
+  /** Lấy thống kê tổng quan (hỗ trợ revenueRange: 'week' | 'month' | 'year' | 'all') */
+  getStats: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params?.revenueRange) searchParams.set("revenueRange", params.revenueRange);
+    const str = searchParams.toString();
+    return apiClient(`/admin/stats${str ? `?${str}` : ""}`);
+  },
+
+  /** Lấy danh sách giao dịch VNPay với bộ lọc, tìm kiếm và phân trang server-side */
+  getTransactions: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set("page", String(params.page));
+    if (params.limit) searchParams.set("limit", String(params.limit));
+    if (params.search) searchParams.set("search", params.search);
+    if (params.status && params.status !== "ALL") searchParams.set("status", params.status);
+    if (params.sort) searchParams.set("sort", params.sort);
+    const str = searchParams.toString();
+    return apiClient(`/admin/transactions${str ? `?${str}` : ""}`);
+  },
+
+  /** Lấy danh sách phòng học (cả công khai và riêng tư) dành cho Quản trị viên (hỗ trợ phân trang) */
+  getRooms: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set("page", String(params.page));
+    if (params.limit) searchParams.set("limit", String(params.limit));
+    if (params.search) searchParams.set("search", params.search);
+    if (params.category && params.category !== "all")
+      searchParams.set("category", params.category);
+    const str = searchParams.toString();
+    return apiClient(`/admin/rooms${str ? `?${str}` : ""}`);
+  },
 
   /** Lấy danh sách người dùng với bộ lọc và phân trang */
   getUsers: (params = {}) => {
@@ -307,9 +450,10 @@ export const adminApi = {
     }),
 
   /** Khóa / mở khóa tài khoản người dùng */
-  deleteUser: (id) =>
+  deleteUser: (id, body) =>
     apiClient(`/admin/users/${id}`, {
       method: "DELETE",
+      body,
     }),
 
   /** Lấy danh sách gói dịch vụ */
@@ -342,8 +486,14 @@ export const adminApi = {
       method: "DELETE",
     }),
 
-  /** Lấy danh sách quản trị viên */
-  getAdmins: () => apiClient("/admin/admins"),
+  /** Lấy danh sách quản trị viên (hỗ trợ phân trang) */
+  getAdmins: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set("page", String(params.page));
+    if (params.limit) searchParams.set("limit", String(params.limit));
+    const str = searchParams.toString();
+    return apiClient(`/admin/admins${str ? `?${str}` : ""}`);
+  },
 
   /** Tạo tài khoản quản trị viên mới */
   createAdmin: (data) =>
@@ -358,14 +508,34 @@ export const adminApi = {
       method: "PUT",
       body: { newPassword },
     }),
+
+  /** Quản trị viên tặng lượt mở thẻ hoặc tặng thẻ bài cho người dùng */
+  giftCards: ({ userId, draws, cardId, count, fullSet }) =>
+    apiClient("/admin/gift-cards", {
+      method: "POST",
+      body: { userId, draws, cardId, count, fullSet },
+    }),
 };
 
 export const titlesApi = {
   /** Lấy danh sách milestones, titles và trạng thái mở khóa */
   getTitles: () => apiClient("/titles"),
-  /** Trang bị danh hiệu theo ID */
-  equip: (titleId) =>
-    apiClient("/titles/equip", { method: "POST", body: { titleId } }),
+  /** Trang bị danh hiệu theo ID hoặc payload */
+  equip: (payloadOrId) => {
+    const body =
+      typeof payloadOrId === "object" && payloadOrId !== null
+        ? payloadOrId
+        : { titleId: payloadOrId };
+    return apiClient("/titles/equip", { method: "POST", body });
+  },
+  /** Alias cho equip (hỗ trợ gọi titlesApi.equipTitle) */
+  equipTitle: (payloadOrId) => {
+    const body =
+      typeof payloadOrId === "object" && payloadOrId !== null
+        ? payloadOrId
+        : { titleId: payloadOrId };
+    return apiClient("/titles/equip", { method: "POST", body });
+  },
 };
 
 export const uploadApi = {
@@ -484,6 +654,34 @@ export const aiApi = {
       method: "POST",
       body: { message, history, contextType, roomSubject },
     }),
+};
+
+export const cardsApi = {
+  /** Lấy thông tin lượt mở thẻ và kho thẻ bài */
+  getMyCards: () => {
+    const token = getAuthToken();
+    return apiClient("/cards/my-cards", {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+  },
+
+  /** Rút 1 lá bài ngẫu nhiên (1-7) */
+  draw: () => {
+    const token = getAuthToken();
+    return apiClient("/cards/draw", {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+  },
+
+  /** Đổi trọn bộ 7 lá bài (1-7) lấy 1 tháng VIP */
+  exchangeVip: () => {
+    const token = getAuthToken();
+    return apiClient("/cards/exchange-vip", {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+  },
 };
 
 export { API_URL, TOKEN_KEY, USER_KEY };

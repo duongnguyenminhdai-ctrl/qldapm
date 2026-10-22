@@ -16,7 +16,7 @@ import {
   Loader2,
   RefreshCw,
 } from "lucide-react";
-import { titlesApi, getStoredUser, setAuthSession } from "@/lib/api";
+import { titlesApi, getStoredUser, setStoredUser, setAuthSession } from "@/lib/api";
 import { TITLE_STYLE_MAP, TITLE_MILESTONES } from "@/lib/titlesConfig";
 import { cn } from "@/lib/utils";
 
@@ -111,6 +111,28 @@ function buildFallbackTitlesData(storedUser) {
   };
 }
 
+// Helper lấy màu chữ chuẩn cho danh hiệu theo nhận diện hệ thống
+function getTitleColorClass(title) {
+  const tag = title?.tag || "";
+  const name = title?.name || "";
+  if (
+    tag === "Tu tiên" ||
+    tag === "Học viện" ||
+    tag === "Bá đạo" ||
+    tag === "Vũ trụ" ||
+    name === "Kẻ khờ" ||
+    name === "Tịnh tâm thành thánh" ||
+    name === "Vũ hóa đăng tiên"
+  ) {
+    return "text-purple-700 dark:text-purple-300 font-semibold";
+  }
+  if (tag === "Hải quân" || tag.includes("Pro") || tag === "Gói Pro") {
+    return "text-amber-700 dark:text-amber-300 font-semibold";
+  }
+  // Quân hàm, Lục quân, Ngũ sao
+  return "text-stone-900 dark:text-stone-100 font-semibold";
+}
+
 export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
   const [activeTab, setActiveTab] = useState("ALL"); // ALL | STREAK | HOURS | PRO
   const [data, setData] = useState(() => {
@@ -173,6 +195,8 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
     try {
       const res = await titlesApi.equip(title.id);
       if (res.success) {
+        const equippedTitleName = res.data?.equippedTitle || title.name;
+
         // Cập nhật local state
         setData((prev) => {
           if (!prev) return prev;
@@ -180,12 +204,12 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
             ...m,
             titles: m.titles.map((t) => ({
               ...t,
-              isEquipped: t.id === title.id,
+              isEquipped: t.id === title.id || t.name === equippedTitleName,
             })),
           }));
           const nextData = {
             ...prev,
-            equippedTitle: res.data.equippedTitle,
+            equippedTitle: equippedTitleName,
             milestones: updatedMilestones,
           };
           cachedTitlesData = nextData;
@@ -196,9 +220,11 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
         const stored = getStoredUser();
         const updatedUser = {
           ...(stored || {}),
-          equippedTitle: res.data.equippedTitle,
-          title: res.data.equippedTitle,
+          equippedTitle: equippedTitleName,
+          activeTitle: equippedTitleName,
+          title: equippedTitleName,
         };
+        setStoredUser(updatedUser);
         setAuthSession({
           user: updatedUser,
         });
@@ -208,8 +234,10 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
           window.dispatchEvent(
             new CustomEvent("vsr:title-updated", {
               detail: {
-                equippedTitle: res.data.equippedTitle,
-                title: res.data.equippedTitle,
+                equippedTitle: equippedTitleName,
+                activeTitle: equippedTitleName,
+                title: equippedTitleName,
+                titleId: title.id,
                 user: updatedUser,
               },
             })
@@ -218,11 +246,11 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
 
         setMessage({
           type: "success",
-          text: `Đã trang bị danh hiệu "${res.data.equippedTitle}"`,
+          text: `Đã trang bị danh hiệu "${res.data?.equippedTitle || title.name}"`,
         });
 
         if (onEquippedChange) {
-          onEquippedChange(res.data.equippedTitle);
+          onEquippedChange(res.data?.equippedTitle || title.name);
         }
       } else {
         setMessage({
@@ -271,31 +299,31 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5"
       style={{
-        backgroundColor: "rgba(9, 9, 11, 0.8)",
+        backgroundColor: "rgba(20, 18, 16, 0.85)",
         backdropFilter: "blur(12px)",
       }}
     >
       <div
-        className="relative flex flex-col w-full max-w-3xl max-h-[90vh] bg-zinc-900 border border-zinc-800/80 rounded-2xl shadow-2xl overflow-hidden"
+        className="relative flex flex-col w-full max-w-3xl max-h-[90vh] bg-[#FAF6F0] text-stone-900 border border-amber-900/15 dark:bg-[#1A1410] dark:text-stone-100 dark:border-amber-500/30 rounded-2xl shadow-2xl overflow-hidden"
         style={{ animation: "fadeInScale 0.2s ease-out" }}
       >
         {/* Header */}
-        <div className="relative px-6 py-5 border-b border-zinc-800/70 bg-zinc-900/80 flex items-center justify-between shrink-0">
+        <div className="relative px-6 py-5 border-b border-amber-900/10 bg-[#F4EFE6] dark:border-amber-500/20 dark:bg-[#15100c] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-600/15 border border-amber-600/30 text-amber-700 dark:text-amber-400">
               <Award className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
+              <h2 className="font-serif text-lg font-bold text-stone-900 dark:text-stone-100 flex items-center gap-2">
                 Bộ sưu tập Danh hiệu & Quân hàm
-                <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700/60 flex items-center gap-1.5">
+                <span className="text-xs font-normal px-2.5 py-0.5 rounded-full bg-stone-200/80 text-stone-700 border border-stone-300/80 dark:bg-[#251D16] dark:text-stone-300 dark:border-amber-500/20 flex items-center gap-1.5">
                   {unlockedCount}/{totalTitlesCount}
                   {loading && (
-                    <Loader2 className="w-3 h-3 animate-spin text-amber-400 shrink-0" />
+                    <Loader2 className="w-3 h-3 animate-spin text-amber-600 dark:text-amber-400 shrink-0" />
                   )}
                 </span>
               </h2>
-              <p className="text-xs text-zinc-400">
+              <p className="text-xs text-stone-600 dark:text-stone-400">
                 Mỗi mốc thành tích mở khóa đồng thời 2–3 danh hiệu riêng biệt. Hãy chọn danh xưng xứng tầm.
               </p>
             </div>
@@ -303,7 +331,7 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
 
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors"
+            className="p-2 rounded-lg text-stone-500 hover:text-stone-900 hover:bg-stone-200/60 dark:text-stone-400 dark:hover:text-stone-100 dark:hover:bg-[#251D16] transition-colors"
             title="Đóng"
           >
             <X className="w-4 h-4" />
@@ -312,53 +340,39 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
 
         {/* Current Equipped Highlight & Stats Banner */}
         {data && (
-          <div className="px-6 py-3.5 bg-zinc-950/60 border-b border-zinc-800/50 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="px-6 py-3.5 bg-stone-200/50 border-b border-amber-900/10 text-stone-700 dark:bg-[#15100c]/80 dark:border-amber-500/20 dark:text-stone-300 flex flex-wrap items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2">
-              <span className="text-zinc-400">Đang trang bị:</span>
+              <span className="text-stone-600 dark:text-stone-400">Đang trang bị:</span>
               <span
                 className={cn(
-                  "font-semibold px-2.5 py-0.5 rounded-full border shadow-sm",
-                  TITLE_STYLE_MAP[data.equippedTitle]?.color ||
-                    "text-zinc-200 border-zinc-700 bg-zinc-800/60"
+                  "font-semibold px-2.5 py-0.5 rounded-full border shadow-xs bg-stone-100/90 border-stone-300/80 text-stone-800 dark:bg-[#251D16] dark:border-amber-500/20 dark:text-stone-200",
+                  getTitleColorClass({
+                    name: data.equippedTitle,
+                    tag: TITLE_STYLE_MAP[data.equippedTitle]?.tag,
+                  })
                 )}
               >
                 {data.equippedTitle}
               </span>
             </div>
 
-            <div className="flex items-center gap-4 text-zinc-400">
+            <div className="flex items-center gap-4 text-stone-700 dark:text-stone-300">
               <span className="flex items-center gap-1">
-                <Flame className="w-3.5 h-3.5 text-orange-400" />
+                <Flame className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 Streak:{" "}
-                <strong className="text-zinc-200">{data.stats?.streak} ngày</strong>
+                <strong className="text-stone-900 dark:text-stone-100">{data.stats?.streak} ngày</strong>
               </span>
               <span className="flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-sky-400" />
+                <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 Học:{" "}
-                <strong className="text-zinc-200">
+                <strong className="text-stone-900 dark:text-stone-100">
                   {data.stats?.studyHours} giờ
                 </strong>
               </span>
               <span className="flex items-center gap-1">
-                <Crown
-                  className={cn(
-                    "w-3.5 h-3.5",
-                    userRank === "Ultra" && "text-amber-400",
-                    userRank === "Pro" && "text-violet-400",
-                    userRank === "Plus" && "text-sky-400",
-                    userRank === "Miễn phí" && "text-zinc-500"
-                  )}
-                />
+                <Crown className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 Hạng:{" "}
-                <strong
-                  className={cn(
-                    "font-semibold",
-                    userRank === "Ultra" && "text-amber-400",
-                    userRank === "Pro" && "text-violet-400",
-                    userRank === "Plus" && "text-sky-400",
-                    userRank === "Miễn phí" && "text-zinc-300"
-                  )}
-                >
+                <strong className="font-semibold text-amber-700 dark:text-amber-300">
                   {userRank}
                 </strong>
               </span>
@@ -372,14 +386,14 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
             className={cn(
               "mx-6 mt-3 px-3.5 py-2 rounded-xl text-xs flex items-center justify-between border",
               message.type === "success"
-                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
-                : "bg-red-500/10 border-red-500/20 text-red-300"
+                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-300"
+                : "bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-300"
             )}
           >
             <span>{message.text}</span>
             <button
               onClick={() => setMessage(null)}
-              className="text-zinc-400 hover:text-zinc-200 ml-2"
+              className="text-stone-400 hover:text-stone-600 dark:text-zinc-400 dark:hover:text-zinc-200 ml-2"
             >
               ✕
             </button>
@@ -387,7 +401,7 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
         )}
 
         {/* Category Tabs */}
-        <div className="px-6 pt-3 pb-2 border-b border-zinc-800/40 flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0">
+        <div className="px-6 pt-3 pb-2 border-b border-amber-900/10 dark:border-amber-500/20 flex items-center gap-2 overflow-x-auto scrollbar-none shrink-0">
           {[
             { id: "ALL", label: "Tất cả", icon: Sparkles },
             { id: "STREAK", label: "Chuỗi ngày", icon: Flame },
@@ -403,16 +417,16 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0",
                   isActive
-                    ? "bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700/80"
-                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40"
+                    ? "bg-amber-100/90 text-amber-900 border border-amber-600/40 shadow-xs dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-500/40"
+                    : "text-stone-600 hover:text-stone-900 hover:bg-stone-200/50 dark:text-stone-400 dark:hover:text-stone-200 dark:hover:bg-[#251D16]"
                 )}
               >
                 <Icon
                   className={cn(
                     "w-3.5 h-3.5",
                     isActive
-                      ? "text-amber-400"
-                      : "text-zinc-500"
+                      ? "text-amber-700 dark:text-amber-400"
+                      : "text-stone-500 dark:text-stone-400"
                   )}
                 />
                 {tab.label}
@@ -424,12 +438,12 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
         {/* Milestones Scrollable Content */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {loading && !data ? (
-            <div className="py-20 flex flex-col items-center justify-center gap-3 text-zinc-500">
-              <Loader2 className="w-6 h-6 animate-spin text-amber-400" />
+            <div className="py-20 flex flex-col items-center justify-center gap-3 text-stone-500 dark:text-stone-400">
+              <Loader2 className="w-6 h-6 animate-spin text-amber-600 dark:text-amber-400" />
               <p className="text-xs">Đang tải bộ sưu tập danh hiệu...</p>
             </div>
           ) : filteredMilestones.length === 0 ? (
-            <div className="py-16 text-center text-zinc-500 text-xs">
+            <div className="py-16 text-center text-stone-500 dark:text-stone-400 text-xs">
               Chưa có danh hiệu nào trong danh mục này.
             </div>
           ) : (
@@ -448,8 +462,8 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
                   className={cn(
                     "rounded-xl border p-4 transition-all duration-200 space-y-3.5",
                     isUnlocked
-                      ? "bg-zinc-800/30 border-zinc-700/60"
-                      : "bg-zinc-950/40 border-zinc-800/40 opacity-75"
+                      ? "bg-[#FAF6F0] border-amber-900/15 dark:bg-[#201b18] dark:border-amber-500/20 shadow-xs"
+                      : "bg-stone-100/60 border-stone-300/50 dark:bg-[#181412]/60 dark:border-[#2d2620] opacity-80"
                   )}
                 >
                   {/* Milestone Header */}
@@ -459,8 +473,8 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
                         className={cn(
                           "w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5",
                           isUnlocked
-                            ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                            : "bg-zinc-800/80 text-zinc-500 border border-zinc-700/40"
+                            ? "bg-amber-600/15 text-amber-700 border border-amber-600/30 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30"
+                            : "bg-stone-200/80 text-stone-500 border border-stone-300 dark:bg-[#201b18] dark:text-stone-500 dark:border-stone-700"
                         )}
                       >
                         <CategoryIcon className="w-3.5 h-3.5" />
@@ -470,7 +484,7 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
                           <h3
                             className={cn(
                               "text-sm font-semibold",
-                              isUnlocked ? "text-zinc-100" : "text-zinc-400"
+                              isUnlocked ? "text-stone-900 dark:text-stone-100" : "text-stone-500 dark:text-stone-400"
                             )}
                           >
                             {m.category === "STREAK" && `Mốc Streak ${m.minStreak} ngày`}
@@ -479,17 +493,17 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
                           </h3>
 
                           {isUnlocked ? (
-                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-amber-600/15 text-amber-800 border border-amber-600/30 dark:bg-amber-500/20 dark:text-amber-200 dark:border-amber-500/30">
                               Đã đạt mốc
                             </span>
                           ) : (
-                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700/50 flex items-center gap-1">
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-stone-200/80 text-stone-600 border border-stone-300 dark:bg-[#201b18] dark:text-stone-400 dark:border-stone-700 flex items-center gap-1">
                               <Lock className="w-2.5 h-2.5" /> Chưa mở
                             </span>
                           )}
                         </div>
 
-                        <p className="text-xs text-zinc-400 italic mt-0.5 line-clamp-2">
+                        <p className="text-xs text-stone-600 dark:text-stone-400 italic mt-0.5 line-clamp-2">
                           &ldquo;{m.description}&rdquo;
                         </p>
                       </div>
@@ -498,15 +512,15 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
                     {/* Progress indicator */}
                     {!isUnlocked && m.progress && (
                       <div className="sm:text-right shrink-0">
-                        <div className="text-[11px] font-medium text-zinc-400 mb-1">
+                        <div className="text-[11px] font-medium text-stone-600 dark:text-stone-400 mb-1">
                           Tiến độ:{" "}
-                          <span className="text-amber-400">
+                          <span className="text-amber-700 dark:text-amber-400 font-semibold">
                             {m.progress.current}/{m.progress.target} {m.progress.unit}
                           </span>
                         </div>
-                        <div className="w-32 sm:w-28 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                        <div className="w-32 sm:w-28 h-1.5 bg-stone-200 rounded-full overflow-hidden border border-stone-300 dark:bg-[#141210] dark:border-[#2d2620]">
                           <div
-                            className="h-full bg-gradient-to-r from-amber-500 to-orange-400 rounded-full transition-all duration-300"
+                            className="h-full bg-gradient-to-r from-amber-600 to-amber-500 rounded-full transition-all duration-300"
                             style={{ width: `${m.progress.percent}%` }}
                           />
                         </div>
@@ -527,35 +541,37 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
                           className={cn(
                             "relative flex items-center justify-between p-2.5 rounded-lg border transition-all duration-150",
                             isEquipped
-                              ? "bg-violet-950/20 border-violet-500/50 ring-1 ring-violet-500/30"
+                              ? "bg-amber-100/90 border-amber-600 ring-1 ring-amber-500/40 shadow-xs dark:bg-[#2d241d] dark:border-amber-500 dark:ring-amber-500/40 text-stone-900 dark:text-stone-100"
                               : isTitleUnlocked
-                              ? "bg-zinc-800/50 border-zinc-700/60 hover:border-zinc-600"
-                              : "bg-zinc-900/40 border-zinc-800/40 opacity-60"
+                              ? "bg-stone-100/90 border-stone-300/80 text-stone-800 dark:bg-[#251D16] dark:border-amber-500/20 dark:text-stone-200 hover:border-amber-600/40"
+                              : "bg-stone-100/50 border-stone-300/50 text-stone-400 dark:bg-[#181412]/60 dark:border-stone-800 dark:text-stone-500 opacity-60"
                           )}
                         >
                           <div className="min-w-0 pr-2">
                             <div className="flex items-center gap-1.5">
                               {!isTitleUnlocked && (
-                                <Lock className="w-3 h-3 text-zinc-500 shrink-0" />
+                                <Lock className="w-3 h-3 text-stone-400 dark:text-stone-500 shrink-0" />
                               )}
                               <span
                                 className={cn(
-                                  "text-xs font-semibold truncate",
-                                  isTitleUnlocked ? title.color : "text-zinc-400"
+                                  "text-xs truncate",
+                                  isTitleUnlocked
+                                    ? getTitleColorClass(title)
+                                    : "text-stone-400 dark:text-stone-500 font-medium"
                                 )}
                               >
                                 {title.name}
                               </span>
                             </div>
 
-                            <span className="text-[10px] text-zinc-500 font-normal">
+                            <span className="text-[10px] text-stone-500 dark:text-stone-400 font-normal">
                               {title.tag}
                             </span>
                           </div>
 
                           <div className="shrink-0">
                             {isEquipped ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md shadow-xs">
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-100 border border-amber-300 dark:text-amber-200 dark:bg-amber-950/40 dark:border-amber-500/40 px-2.5 py-1 rounded-md shadow-xs">
                                 <Check className="w-3 h-3 stroke-[3]" />
                                 Đang dùng
                               </span>
@@ -564,7 +580,7 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
                                 type="button"
                                 onClick={() => handleEquip(title)}
                                 disabled={isEquipping}
-                                className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-zinc-700/80 hover:bg-zinc-600 text-zinc-200 hover:text-white border border-zinc-600/60 transition-all flex items-center gap-1"
+                                className="bg-amber-700 hover:bg-amber-600 text-white dark:bg-amber-600 dark:hover:bg-amber-500 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
                               >
                                 {isEquipping ? (
                                   <Loader2 className="w-2.5 h-2.5 animate-spin" />
@@ -573,7 +589,7 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
                                 )}
                               </button>
                             ) : (
-                              <span className="text-[10px] text-zinc-500 px-1.5 py-0.5 rounded bg-zinc-800/40">
+                              <span className="text-[10px] text-stone-500 dark:text-stone-400 px-2 py-0.5 rounded bg-stone-200/80 dark:bg-[#181412] border border-stone-300/60 dark:border-stone-800">
                                 Khóa
                               </span>
                             )}
@@ -589,13 +605,13 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3.5 border-t border-zinc-800/70 bg-zinc-900/60 flex items-center justify-between text-xs text-zinc-500 shrink-0">
+        <div className="px-6 py-3.5 border-t border-amber-900/10 bg-[#F4EFE6] dark:border-amber-500/20 dark:bg-[#15100c] flex items-center justify-between text-xs text-stone-600 dark:text-stone-400 shrink-0">
           <span>
             💡 Hãy giữ chuỗi Streak & học tập mỗi ngày để thu thập trọn bộ quân hàm.
           </span>
           <button
             onClick={onClose}
-            className="px-3.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors font-medium"
+            className="px-3.5 py-1.5 rounded-lg bg-stone-200/80 hover:bg-stone-300/80 text-stone-900 border border-stone-300/80 dark:bg-[#251D16] dark:hover:bg-[#2d241d] dark:text-stone-100 dark:border-amber-500/20 transition-colors font-medium"
           >
             Xong
           </button>

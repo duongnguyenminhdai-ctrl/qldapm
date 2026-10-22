@@ -15,7 +15,7 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["FILE_SHARED", "ROOM_INVITE", "STREAK_ALERT", "MESSAGE", "SYSTEM", "TRANSCRIPT"],
+      enum: ["FILE_SHARED", "ROOM_INVITE", "STREAK_ALERT", "MESSAGE", "SYSTEM", "TRANSCRIPT", "CARD_REWARD"],
       default: "SYSTEM",
     },
     metadata: {

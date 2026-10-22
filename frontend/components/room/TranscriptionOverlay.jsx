@@ -237,14 +237,14 @@ export function TranscriptionOverlay({
     <div
       className="fixed bottom-24 right-5 sm:right-6 z-40 w-[320px] sm:w-[380px] pointer-events-auto transition-all duration-300 animate-in fade-in slide-in-from-bottom-5"
     >
-      <div className="relative flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-950/92 shadow-2xl backdrop-blur-xl ring-1 ring-white/10 overflow-hidden">
+      <div className="relative flex flex-col rounded-2xl border border-[#3a3128] bg-[#1c1815]/95 shadow-2xl backdrop-blur-sm overflow-hidden">
         {/* Banner cảnh báo an toàn khi phiên họp kết thúc */}
         {isSessionEnded && (
-          <div className="flex items-center gap-2 bg-gradient-to-r from-amber-500/20 via-amber-500/10 to-transparent border-b border-amber-500/30 px-3.5 py-2 text-xs text-amber-300">
-            <ShieldCheck className="h-4 w-4 shrink-0 text-amber-400" />
+          <div className="flex items-center gap-2 bg-gradient-to-r from-[#c3a47b]/20 via-[#c3a47b]/10 to-transparent border-b border-[#3a3128] px-3.5 py-2 text-xs text-[#e8cca4]">
+            <ShieldCheck className="h-4 w-4 shrink-0 text-[#c3a47b]" />
             <div className="flex-1 min-w-0">
               <span className="font-semibold">Phiên họp đã kết thúc!</span>
-              <p className="text-[11px] text-amber-200/80 truncate">
+              <p className="text-[11px] text-[#d8c8b4] truncate">
                 Bản chép lời được bảo toàn để bạn sao chép hoặc tải .txt
               </p>
             </div>
@@ -253,7 +253,7 @@ export function TranscriptionOverlay({
                 setIsDismissed(true);
                 if (onClose) onClose();
               }}
-              className="text-amber-300/70 hover:text-amber-200 p-0.5 rounded"
+              className="text-[#e8cca4]/70 hover:text-[#f5ede3] p-0.5 rounded"
               title="Đóng bảng chép lời"
             >
               <X className="h-3.5 w-3.5" />
@@ -262,20 +262,20 @@ export function TranscriptionOverlay({
         )}
 
         {/* Header bảng chép lời */}
-        <div className="flex items-center justify-between border-b border-zinc-800/60 px-3.5 py-2.5 bg-zinc-900/60">
+        <div className="flex items-center justify-between border-b border-[#3a3128] px-3.5 py-2.5 bg-[#181513]/90">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 px-2 py-0.5 text-[10px] font-bold text-zinc-950 shadow-xs">
+            <div className="flex items-center gap-1 rounded-full bg-[#c3a47b] px-2 py-0.5 text-[10px] font-bold text-[#161311] shadow-xs">
               <Crown className="h-2.5 w-2.5" />
               VIP
             </div>
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-xs font-semibold text-zinc-100 truncate">
+              <span className="text-xs font-serif font-semibold text-[#f5ede3] truncate">
                 Bản chép lời
               </span>
               {!isSessionEnded && (
                 <span className="flex h-2 w-2 relative shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#c3a47b] opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#c3a47b]" />
                 </span>
               )}
             </div>
@@ -290,19 +290,19 @@ export function TranscriptionOverlay({
               disabled={history.length === 0 && !interimText}
               className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium transition ${
                 isCopied
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                  : "bg-zinc-800/70 text-zinc-300 hover:bg-zinc-700 hover:text-white border border-zinc-700/50"
+                  ? "bg-[#c3a47b]/20 text-[#e8cca4] border border-[#c3a47b]/40"
+                  : "bg-[#201b18] text-[#d8c8b4] hover:bg-[#26201c] hover:text-[#f5ede3] border border-[#3a3128]"
               } disabled:opacity-40 disabled:cursor-not-allowed`}
               title="Sao chép toàn bộ bản chép lời vào bộ nhớ tạm"
             >
               {isCopied ? (
                 <>
-                  <Check className="h-3 w-3 text-emerald-400" />
+                  <Check className="h-3 w-3 text-[#c3a47b]" />
                   <span>Đã chép</span>
                 </>
               ) : (
                 <>
-                  <Copy className="h-3 w-3 text-zinc-400" />
+                  <Copy className="h-3 w-3 text-[#a89b8d]" />
                   <span className="hidden sm:inline">Sao chép</span>
                 </>
               )}
@@ -313,10 +313,10 @@ export function TranscriptionOverlay({
               type="button"
               onClick={handleDownloadTxt}
               disabled={history.length === 0 && !interimText}
-              className="flex items-center gap-1 rounded-lg bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 hover:text-blue-200 border border-blue-500/30 px-2 py-1 text-[11px] font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 rounded-lg bg-[#201b18] text-[#d8c8b4] hover:bg-[#26201c] hover:text-[#f5ede3] border border-[#3a3128] px-2 py-1 text-[11px] font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
               title="Tải bản chép lời dạng file văn bản (.txt)"
             >
-              <Download className="h-3 w-3 text-blue-400" />
+              <Download className="h-3 w-3 text-[#c3a47b]" />
               <span className="hidden sm:inline">Tải .txt</span>
             </button>
 
@@ -324,7 +324,7 @@ export function TranscriptionOverlay({
             <button
               type="button"
               onClick={() => setIsMinimized((v) => !v)}
-              className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition"
+              className="rounded-lg p-1 text-[#a89b8d] hover:bg-[#201b18] hover:text-[#f5ede3] transition"
               title={isMinimized ? "Mở rộng" : "Thu nhỏ"}
             >
               {isMinimized ? (
@@ -340,11 +340,11 @@ export function TranscriptionOverlay({
         {!isMinimized && (
           <div
             ref={containerRef}
-            className="max-h-[220px] min-h-[90px] overflow-y-auto p-3.5 space-y-2.5 text-xs scrollbar-thin scrollbar-thumb-zinc-800"
+            className="max-h-[220px] min-h-[90px] overflow-y-auto p-3.5 space-y-2.5 text-xs"
           >
             {history.length === 0 && !interimText ? (
-              <div className="flex flex-col items-center justify-center py-6 text-center text-zinc-500">
-                <Mic className="h-5 w-5 mb-1.5 opacity-40 animate-pulse text-amber-400" />
+              <div className="flex flex-col items-center justify-center py-6 text-center text-[#75695e]">
+                <Mic className="h-5 w-5 mb-1.5 opacity-40 animate-pulse text-[#c3a47b]" />
                 <p className="italic text-[11px]">
                   {isSessionEnded
                     ? "Không có bản chép lời nào được ghi lại."
@@ -356,15 +356,15 @@ export function TranscriptionOverlay({
                 {history.map((item) => (
                   <div
                     key={item.id}
-                    className="group rounded-xl bg-zinc-900/60 border border-zinc-800/40 p-2 transition hover:bg-zinc-900/90"
+                    className="group rounded-xl bg-[#201b18] border border-[#3a3128] p-2 transition hover:bg-[#29231f]"
                   >
-                    <div className="flex items-center justify-between gap-1 mb-1 text-[10px] text-zinc-500">
-                      <span className="font-semibold text-zinc-400">
+                    <div className="flex items-center justify-between gap-1 mb-1 text-[10px] text-[#75695e]">
+                      <span className="font-semibold text-[#c3a47b]">
                         {item.speakerName}
                       </span>
                       <span>{item.time}</span>
                     </div>
-                    <p className="text-zinc-200 text-xs leading-relaxed select-text cursor-text">
+                    <p className="text-[#f5ede3] text-xs leading-relaxed select-text cursor-text">
                       {item.text}
                     </p>
                   </div>
@@ -372,12 +372,12 @@ export function TranscriptionOverlay({
 
                 {/* Đoạn thoại đang nói dở (interim) */}
                 {interimText && (
-                  <div className="rounded-xl bg-blue-950/20 border border-blue-500/20 p-2">
-                    <div className="flex items-center gap-1.5 mb-1 text-[10px] text-blue-400">
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-400 animate-ping" />
+                  <div className="rounded-xl bg-[#201b18] border border-[#c3a47b]/30 p-2">
+                    <div className="flex items-center gap-1.5 mb-1 text-[10px] text-[#c3a47b]">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#c3a47b] animate-ping" />
                       <span className="font-semibold">{userName} (Đang nói...)</span>
                     </div>
-                    <p className="text-zinc-300 text-xs italic leading-relaxed select-text cursor-text">
+                    <p className="text-[#d8c8b4] text-xs italic leading-relaxed select-text cursor-text">
                       {interimText}
                     </p>
                   </div>
@@ -389,9 +389,9 @@ export function TranscriptionOverlay({
 
         {/* Footer nhỏ gọn */}
         {!isMinimized && (
-          <div className="flex items-center justify-between border-t border-zinc-800/50 bg-zinc-950/80 px-3 py-1.5 text-[10px] text-zinc-500">
+          <div className="flex items-center justify-between border-t border-[#3a3128] bg-[#181513] px-3 py-1.5 text-[10px] text-[#75695e]">
             <span className="flex items-center gap-1">
-              <FileText className="h-3 w-3 text-zinc-500" />
+              <FileText className="h-3 w-3 text-[#75695e]" />
               <span>{history.length} đoạn phát biểu</span>
             </span>
             <span className="italic">Tự động sao lưu</span>

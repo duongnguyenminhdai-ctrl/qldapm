@@ -47,13 +47,20 @@ function deleteRoom(roomCode) {
  * @param {import("socket.io").Socket} socket
  */
 function registerWhiteboardHandlers(io, socket) {
+  // BẢO MẬT: Kiểm tra xem socket đã thực sự tham gia vào phòng học này hay chưa
+  const isAuthorizedForRoom = (roomCode) => {
+    if (!roomCode) return false;
+    const normalized = (roomCode || "").trim().toUpperCase();
+    return socket.rooms?.has(normalized) || socket.roomCode === normalized;
+  };
+
   /**
    * Sự kiện vẽ nét: draw-line
    * Nhận dữ liệu { prevPoint, currentPoint, color, width, isEraser, roomCode }
    */
   socket.on("draw-line", (data) => {
     const roomCode = (data?.roomCode || socket.roomCode || "").trim().toUpperCase();
-    if (!roomCode || !data) return;
+    if (!roomCode || !data || !isAuthorizedForRoom(roomCode)) return;
 
     const drawings = getRoomDrawings(roomCode);
     drawings.push(data);
@@ -71,7 +78,7 @@ function registerWhiteboardHandlers(io, socket) {
    */
   socket.on("board:add-image", (data) => {
     const roomCode = (data?.roomCode || socket.roomCode || "").trim().toUpperCase();
-    if (!roomCode || !data || !data.id || !data.dataUrl) return;
+    if (!roomCode || !data || !data.id || !data.dataUrl || !isAuthorizedForRoom(roomCode)) return;
 
     // Giới hạn độ dài dataUrl tối đa ~3.5MB để chống tấn công làm tràn bộ nhớ Node.js (OOM)
     if (typeof data.dataUrl !== "string" || data.dataUrl.length > 3500000) {
@@ -101,7 +108,7 @@ function registerWhiteboardHandlers(io, socket) {
    */
   socket.on("board:update-image", (data) => {
     const roomCode = (data?.roomCode || socket.roomCode || "").trim().toUpperCase();
-    if (!roomCode || !data || !data.id) return;
+    if (!roomCode || !data || !data.id || !isAuthorizedForRoom(roomCode)) return;
 
     const images = getRoomImages(roomCode);
     const target = images.find((img) => img.id === data.id);
@@ -122,7 +129,7 @@ function registerWhiteboardHandlers(io, socket) {
    */
   socket.on("board:delete-image", (data) => {
     const roomCode = (data?.roomCode || socket.roomCode || "").trim().toUpperCase();
-    if (!roomCode || !data?.id) return;
+    if (!roomCode || !data?.id || !isAuthorizedForRoom(roomCode)) return;
 
     const images = getRoomImages(roomCode);
     const filtered = images.filter((img) => img.id !== data.id);
@@ -138,7 +145,7 @@ function registerWhiteboardHandlers(io, socket) {
    */
   socket.on("clear-board", (data) => {
     const roomCode = (data?.roomCode || socket.roomCode || "").trim().toUpperCase();
-    if (!roomCode) return;
+    if (!roomCode || !isAuthorizedForRoom(roomCode)) return;
 
     clearRoomDrawings(roomCode);
     clearRoomImages(roomCode);
@@ -152,6 +159,10 @@ function registerWhiteboardHandlers(io, socket) {
    */
   socket.on("whiteboard:get-state", (data, callback) => {
     const roomCode = (data?.roomCode || socket.roomCode || "").trim().toUpperCase();
+    if (!roomCode || !isAuthorizedForRoom(roomCode)) {
+      if (typeof callback === "function") callback({ drawings: [], images: [] });
+      return;
+    }
     const drawings = getRoomDrawings(roomCode);
     const images = getRoomImages(roomCode);
 

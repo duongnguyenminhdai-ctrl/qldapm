@@ -5,6 +5,7 @@ const {
   acceptFriendRequest,
   rejectFriendRequest,
   getFriendsList,
+  unfriend,
 } = require("../controllers/friend.controller");
 const { protect } = require("../middlewares/authMiddleware");
 
@@ -17,5 +18,7 @@ router.get("/requests", getFriendRequests);
 router.post("/accept", acceptFriendRequest);
 router.post("/reject", rejectFriendRequest);
 router.get("/list", getFriendsList);
+router.post("/unfriend", unfriend);
+router.delete("/:friendId", unfriend);
 
 module.exports = router;

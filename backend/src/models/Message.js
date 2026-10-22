@@ -13,11 +13,42 @@ const messageSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    type: {
+      type: String,
+      enum: ["text", "audio", "image"],
+      default: "text",
+      index: true,
+    },
     text: {
       type: String,
       trim: true,
       default: "",
     },
+    audioUrl: {
+      type: String,
+      default: "",
+    },
+    duration: {
+      type: Number,
+      default: 0,
+    },
+    reactions: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        emoji: {
+          type: String,
+          required: true,
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
     image: {
       type: String, // base64 data url hoặc image url
       default: "",

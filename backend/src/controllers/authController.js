@@ -5,6 +5,7 @@ const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
 const OtpVerification = require("../models/OtpVerification");
 const { sendOtpEmail } = require("../utils/mailer");
+const { calculateStreakUpdate, getVietnamDateString } = require("../utils/streakHelper");
 
 const generateToken = (userId) => {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
@@ -25,13 +26,21 @@ const formatUser = (user) => ({
   bio: user.bio || "",
   createdAt: user.createdAt,
   isPro: user.isPro || false,
+  isVip: user.isPro || false,
   proExpiresAt: user.proExpiresAt || null,
-  title: user.title || "Học viên",
-  equippedTitle: user.equippedTitle || "Nhập môn học giả",
+  vipExpiresAt: user.proExpiresAt || null,
+  title: user.equippedTitle || user.activeTitle || user.title || "Nhập môn học giả",
+  equippedTitle: user.equippedTitle || user.activeTitle || user.title || "Nhập môn học giả",
+  activeTitle: user.activeTitle || user.equippedTitle || user.title || "Nhập môn học giả",
   unlockedTitleIds: user.unlockedTitleIds || ["nhap-mon-hoc-gia", "thieu-uy"],
   streak: user.streak || 1,
+  lastActiveDate: user.lastActiveDate || null,
   totalStudySeconds: user.totalStudySeconds || 0,
   proMonths: user.proMonths || (user.isPro ? 1 : 0),
+  dailyStudyMinutes: user.dailyStudyMinutes || 0,
+  lastCardRewardDate: user.lastCardRewardDate || null,
+  cardDraws: user.cardDraws || 0,
+  cardInventory: user.cardInventory || [],
   isVerified: user.isVerified ?? true,
   authProvider: user.authProvider || "LOCAL",
 });
@@ -60,6 +69,8 @@ const register = async (req, res, next) => {
       password,
       isVerified: true,
       authProvider: "LOCAL",
+      streak: 1,
+      lastActiveDate: getVietnamDateString(),
     });
     const token = generateToken(user._id);
 
@@ -142,6 +153,9 @@ const registerRequestOtp = async (req, res, next) => {
     // Xóa OTP cũ cùng loại
     await OtpVerification.deleteMany({ email: cleanEmail, type: "REGISTER" });
 
+    // Băm mật khẩu bằng bcrypt trước khi lưu tạm vào OtpVerification (chống rò rỉ Plaintext Password)
+    const passwordHash = await bcrypt.hash(password, 10);
+
     // Lưu bản ghi OtpVerification
     await OtpVerification.create({
       email: cleanEmail,
@@ -149,7 +163,7 @@ const registerRequestOtp = async (req, res, next) => {
       type: "REGISTER",
       data: {
         name: name.trim(),
-        password,
+        passwordHash,
       },
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
@@ -258,13 +272,16 @@ const registerVerifyOtp = async (req, res, next) => {
       });
     }
 
-    // Tạo User chính thức
+    // Tạo User chính thức (hỗ trợ cả passwordHash mới và fallback password cũ)
+    const userPassword = record.data?.passwordHash || record.data?.password;
     const user = await User.create({
       name: record.data.name,
       email: cleanEmail,
-      password: record.data.password,
+      password: userPassword,
       isVerified: true,
       authProvider: "LOCAL",
+      streak: 1,
+      lastActiveDate: getVietnamDateString(),
     });
 
     // Xóa OTP sau khi dùng xong
@@ -312,9 +329,10 @@ const forgotPasswordRequestOtp = async (req, res, next) => {
       });
     }
 
-    if (user.status === "BLOCKED") {
+    if (user.status === "BLOCKED" || user.isBanned) {
       return res.status(403).json({
         success: false,
+        code: "ACCOUNT_BANNED",
         message: "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.",
       });
     }
@@ -405,9 +423,18 @@ const forgotPasswordVerifyOtp = async (req, res, next) => {
       });
     }
 
-    // Cấp reset token có thời hạn 15 phút
+    // Cấp reset token có thời hạn 15 phút với mã định danh jti một lần dùng
+    const resetTokenId = crypto.randomUUID();
+    await OtpVerification.deleteMany({ email: cleanEmail, type: "RESET_TOKEN" });
+    await OtpVerification.create({
+      email: cleanEmail,
+      otpHash: resetTokenId,
+      type: "RESET_TOKEN",
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    });
+
     const resetToken = jwt.sign(
-      { email: cleanEmail, purpose: "RESET_PASSWORD" },
+      { email: cleanEmail, purpose: "RESET_PASSWORD", jti: resetTokenId },
       process.env.JWT_SECRET,
       { expiresIn: "15m" }
     );
@@ -459,7 +486,7 @@ const resetPassword = async (req, res, next) => {
     // Xác thực resetToken
     let decoded;
     try {
-      decoded = jwt.verify(resetToken, process.env.JWT_SECRET);
+      decoded = jwt.verify(resetToken, process.env.JWT_SECRET, { algorithms: ["HS256"] });
       if (
         decoded.purpose !== "RESET_PASSWORD" ||
         decoded.email !== cleanEmail
@@ -474,6 +501,22 @@ const resetPassword = async (req, res, next) => {
         success: false,
         message: "Phiên đặt lại mật khẩu đã hết hạn. Vui lòng thao tác lại từ đầu.",
       });
+    }
+
+    // Kiểm tra tính hợp lệ và thu hồi resetToken một lần dùng (Single-Use Revocation)
+    if (decoded.jti) {
+      const validResetRecord = await OtpVerification.findOne({
+        email: cleanEmail,
+        type: "RESET_TOKEN",
+        otpHash: decoded.jti,
+      });
+      if (!validResetRecord) {
+        return res.status(400).json({
+          success: false,
+          message: "Token đặt lại mật khẩu đã được sử dụng hoặc không hợp lệ. Vui lòng thao tác lại từ đầu.",
+        });
+      }
+      await OtpVerification.deleteMany({ email: cleanEmail, type: "RESET_TOKEN" });
     }
 
     const user = await User.findOne({ email: cleanEmail });
@@ -658,11 +701,14 @@ const googleLogin = async (req, res, next) => {
         isVerified: true,
         role: "USER",
         status: "ACTIVE",
+        streak: 1,
+        lastActiveDate: getVietnamDateString(),
       });
     } else {
-      if (user.status === "BLOCKED") {
+      if (user.status === "BLOCKED" || user.isBanned) {
         return res.status(403).json({
           success: false,
+          code: "ACCOUNT_BANNED",
           message: "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.",
         });
       }
@@ -680,6 +726,15 @@ const googleLogin = async (req, res, next) => {
         user.isVerified = true;
         changed = true;
       }
+
+      // Cập nhật streak theo giờ Việt Nam
+      const streakUpdate = calculateStreakUpdate(user);
+      if (streakUpdate.shouldUpdate) {
+        user.streak = streakUpdate.streak;
+        user.lastActiveDate = streakUpdate.lastActiveDate;
+        changed = true;
+      }
+
       if (changed) {
         await user.save();
       }
@@ -706,9 +761,17 @@ const googleLogin = async (req, res, next) => {
  */
 const login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
 
-    const user = await User.findOne({ email: email.toLowerCase() }).select(
+    if (!email || typeof email !== "string" || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập đầy đủ email và mật khẩu.",
+      });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: cleanEmail }).select(
       "+password"
     );
 
@@ -722,22 +785,68 @@ const login = async (req, res, next) => {
       });
     }
 
-    if (user.status === "BLOCKED") {
+    if (user.status === "BLOCKED" || user.isBanned) {
       return res.status(403).json({
         success: false,
+        code: "ACCOUNT_BANNED",
         message: "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.",
+      });
+    }
+
+    // Kiểm tra xem tài khoản có đang bị tạm khóa do nhập sai mật khẩu quá 5 lần không
+    if (user.lockUntil && new Date(user.lockUntil) > new Date()) {
+      const remainingMin = Math.max(1, Math.ceil((new Date(user.lockUntil).getTime() - Date.now()) / (60 * 1000)));
+      return res.status(423).json({
+        success: false,
+        code: "ACCOUNT_LOCKED",
+        message: `Tài khoản tạm thời bị khóa do nhập sai mật khẩu quá 5 lần. Vui lòng thử lại sau ${remainingMin} phút hoặc dùng chức năng Quên mật khẩu.`,
       });
     }
 
     const isMatch = await user.matchPassword(password);
     if (!isMatch) {
+      const attempts = (Number(user.failedLoginAttempts) || 0) + 1;
+      const updatePayload = { failedLoginAttempts: attempts };
+      let warningMsg = "Email hoặc mật khẩu không đúng.";
+
+      if (attempts >= 5) {
+        updatePayload.lockUntil = new Date(Date.now() + 15 * 60 * 1000); // Khóa 15 phút
+        updatePayload.failedLoginAttempts = 0;
+        warningMsg = "Bạn đã nhập sai mật khẩu 5 lần liên tiếp. Tài khoản đã bị tạm khóa trong 15 phút.";
+      } else {
+        warningMsg = `Email hoặc mật khẩu không đúng. Còn ${5 - attempts} lần thử trước khi tài khoản bị tạm khóa 15 phút.`;
+      }
+
+      await User.updateOne({ _id: user._id }, { $set: updatePayload });
+
       return res.status(401).json({
         success: false,
-        message: "Email hoặc mật khẩu không đúng.",
+        message: warningMsg,
         errors: {
-          password: "Email hoặc mật khẩu không đúng.",
+          password: warningMsg,
         },
       });
+    }
+
+    // Đăng nhập thành công -> Xóa trạng thái đếm sai mật khẩu
+    if (user.failedLoginAttempts > 0 || user.lockUntil) {
+      await User.updateOne({ _id: user._id }, { $set: { failedLoginAttempts: 0, lockUntil: null } });
+    }
+
+    // Cập nhật streak theo giờ Việt Nam
+    const streakUpdate = calculateStreakUpdate(user);
+    if (streakUpdate.shouldUpdate) {
+      user.streak = streakUpdate.streak;
+      user.lastActiveDate = streakUpdate.lastActiveDate;
+      await User.updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            streak: streakUpdate.streak,
+            lastActiveDate: streakUpdate.lastActiveDate,
+          },
+        }
+      );
     }
 
     const token = generateToken(user._id);
@@ -767,6 +876,22 @@ const getMe = async (req, res, next) => {
         success: false,
         message: "Không tìm thấy người dùng.",
       });
+    }
+
+    // Cập nhật streak theo giờ Việt Nam nếu sang ngày mới
+    const streakUpdate = calculateStreakUpdate(user);
+    if (streakUpdate.shouldUpdate) {
+      user.streak = streakUpdate.streak;
+      user.lastActiveDate = streakUpdate.lastActiveDate;
+      await User.updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            streak: streakUpdate.streak,
+            lastActiveDate: streakUpdate.lastActiveDate,
+          },
+        }
+      );
     }
 
     return res.status(200).json({

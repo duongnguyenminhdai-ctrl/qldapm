@@ -28,7 +28,7 @@ export function PomodoroWidget({
   return (
     <div
       className={cn(
-        "flex items-center gap-4 rounded-2xl border border-zinc-800/60 bg-zinc-900/50 px-4 py-3.5",
+        "flex items-center gap-4 rounded-2xl border border-stone-200 bg-[#ECE5DA]/60 dark:border-zinc-800/60 dark:bg-zinc-900/50 px-4 py-3.5",
         className
       )}
     >
@@ -41,7 +41,7 @@ export function PomodoroWidget({
             fill="none"
             stroke="currentColor"
             strokeWidth={stroke}
-            className="text-zinc-800"
+            className="text-stone-300 dark:text-zinc-800"
           />
           <circle
             cx={size / 2}
@@ -53,18 +53,18 @@ export function PomodoroWidget({
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={offset}
-            className="text-emerald-400 transition-[stroke-dashoffset] duration-taste ease-taste"
+            className="text-emerald-500 dark:text-emerald-400 transition-[stroke-dashoffset] duration-taste ease-taste"
           />
         </svg>
-        <span className="absolute font-mono text-sm font-semibold tabular-nums tracking-tight text-zinc-100">
+        <span className="absolute font-mono text-sm font-semibold tabular-nums tracking-tight text-[#2D241E] dark:text-zinc-100">
           {timeLabel}
         </span>
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-zinc-100">{label}</p>
-          <span className="font-mono text-xs text-zinc-500 tabular-nums">
+          <p className="text-sm font-medium text-[#2D241E] dark:text-zinc-100">{label}</p>
+          <span className="font-mono text-xs text-[#8C7E72] dark:text-zinc-500 tabular-nums">
             {Math.round(clamped)}%
           </span>
         </div>
@@ -80,8 +80,8 @@ export function PomodoroWidget({
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition active:scale-95",
                 running
-                  ? "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                  : "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30"
+                  ? "bg-stone-200 text-[#2D241E] hover:bg-stone-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                  : "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30"
               )}
             >
               {running ? (
@@ -103,7 +103,7 @@ export function PomodoroWidget({
               type="button"
               onClick={onReset}
               title="Đặt lại thời gian"
-              className="inline-flex items-center gap-1 text-xs text-zinc-400 transition hover:text-zinc-200 active:scale-95"
+              className="inline-flex items-center gap-1 text-xs text-[#8C7E72] dark:text-zinc-400 transition hover:text-[#2D241E] dark:hover:text-zinc-200 active:scale-95"
             >
               <RotateCcw className="h-3 w-3" />
               Đặt lại

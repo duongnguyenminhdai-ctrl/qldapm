@@ -15,6 +15,8 @@ import {
   Smile,
   Sparkles,
   Crown,
+  LogOut,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ICON_STROKE } from "@/lib/constants";
@@ -66,8 +68,12 @@ export function FloatingDock({
   isHandRaised = false,
   onToggleHand,
   onSendReaction,
+  // Host status
+  isHost = false,
+  participantsCount = 1,
 }) {
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [cooldown, setCooldown] = useState(false);
   const reactionMenuRef = useRef(null);
 
@@ -97,12 +103,12 @@ export function FloatingDock({
     <TooltipProvider delayDuration={200}>
       <div
         className={cn(
-          "pointer-events-none fixed inset-x-0 bottom-0 z-[40] flex justify-center pb-4 pt-2 sm:pb-5",
+          "pointer-events-none fixed inset-x-0 bottom-0 z-[40] flex justify-center pb-0 sm:pb-5",
           className
         )}
       >
         <nav
-          className="surface-blur pointer-events-auto flex items-center gap-0.5 rounded-2xl p-1.5"
+          className="pointer-events-auto flex items-center justify-around sm:justify-center gap-1 sm:gap-1.5 w-full sm:w-auto max-w-full overflow-x-auto scrollbar-quiet rounded-t-2xl sm:rounded-full border-t border-x-0 sm:border border-stone-300/80 bg-[#FAF8F5]/95 dark:border-[#3a3128] dark:bg-[#1e1916]/95 backdrop-blur-md px-2.5 sm:px-3 py-2 sm:py-1.5 shadow-2xl"
           aria-label="Công cụ phòng học"
         >
           <DockButton
@@ -139,7 +145,7 @@ export function FloatingDock({
             <ScreenShare className="h-[18px] w-[18px]" strokeWidth={ICON_STROKE} />
           </DockButton>
 
-          <span className="mx-1 hidden h-5 w-px bg-zinc-800/60 sm:block" aria-hidden />
+          <span className="mx-1 hidden h-5 w-px bg-stone-300 dark:bg-[#3a3128] sm:block" aria-hidden />
 
           {/* Nút Giơ tay phát biểu (Raise Hand) */}
           <Tooltip>
@@ -153,15 +159,15 @@ export function FloatingDock({
                 className={cn(
                   "dock-control transition-all",
                   isHandRaised
-                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-sm shadow-amber-500/20 ring-1 ring-amber-500/30"
-                    : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80"
+                    ? "bg-[#c3a47b]/20 text-[#c3a47b] border border-[#c3a47b]/50 shadow-sm shadow-[#c3a47b]/20 ring-1 ring-[#c3a47b]/30"
+                    : "text-[#a89b8d] hover:text-[#c3a47b] hover:bg-[#26201c]"
                 )}
               >
                 <Hand className="h-[18px] w-[18px]" strokeWidth={ICON_STROKE} />
                 {isHandRaised && (
                   <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#c3a47b] opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#c3a47b]" />
                   </span>
                 )}
               </button>
@@ -184,8 +190,8 @@ export function FloatingDock({
                   className={cn(
                     "dock-control transition-all",
                     reactionMenuOpen
-                      ? "dock-control-on text-amber-300"
-                      : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80"
+                      ? "dock-control-on text-[#c3a47b]"
+                      : "text-[#a89b8d] hover:text-[#c3a47b] hover:bg-[#26201c]"
                   )}
                 >
                   <Smile className="h-[18px] w-[18px]" strokeWidth={ICON_STROKE} />
@@ -199,7 +205,7 @@ export function FloatingDock({
               <div
                 role="menu"
                 aria-label="Chọn cảm xúc"
-                className="surface-blur absolute bottom-full left-1/2 mb-2.5 -translate-x-1/2 flex items-center gap-1 rounded-full p-1.5 shadow-2xl border border-zinc-800/80 bg-zinc-950/90 z-50 animate-in fade-in zoom-in-95 duration-150"
+                className="absolute bottom-full left-1/2 mb-2.5 -translate-x-1/2 flex items-center gap-1 rounded-full p-1.5 shadow-2xl border border-stone-300 bg-[#FAF8F5]/95 text-[#2D241E] dark:border-[#3a3128] dark:bg-[#1e1916]/95 dark:text-[#f5ede3] backdrop-blur-md z-50 animate-in fade-in zoom-in-95 duration-150"
               >
                 {REACTION_EMOJIS.map((emoji) => (
                   <button
@@ -208,7 +214,7 @@ export function FloatingDock({
                     onClick={() => handleEmojiClick(emoji)}
                     disabled={cooldown}
                     className={cn(
-                      "flex h-8 w-8 items-center justify-center rounded-full text-base transition-transform duration-100 active:scale-90 hover:scale-125 hover:bg-white/10",
+                      "flex h-8 w-8 items-center justify-center rounded-full text-base transition-transform duration-100 active:scale-90 hover:scale-125 hover:bg-stone-200/60 dark:hover:bg-white/10",
                       cooldown && "opacity-50 cursor-not-allowed"
                     )}
                     title={`Thả ${emoji}`}
@@ -220,7 +226,7 @@ export function FloatingDock({
             )}
           </div>
 
-          <span className="mx-1 hidden h-5 w-px bg-zinc-800/60 sm:block" aria-hidden />
+          <span className="mx-1 hidden h-5 w-px bg-stone-300 dark:bg-[#3a3128] sm:block" aria-hidden />
 
           <DockButton
             label={panelOpen ? "Đóng panel" : "Chat và Pomodoro"}
@@ -239,13 +245,13 @@ export function FloatingDock({
             className={cn(
               "relative transition-all duration-200",
               isAITutorOpen
-                ? "bg-violet-600/30 text-violet-300 border-violet-500/50 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
-                : "hover:text-violet-300 hover:border-violet-500/40"
+                ? "bg-[#b3894e]/20 text-[#2D241E] border border-[#b3894e]/50 dark:bg-[#c3a47b]/25 dark:text-[#f5ede3] dark:border-[#c3a47b]/50 shadow-[0_0_12px_rgba(195,164,123,0.3)]"
+                : "hover:text-[#b3894e] dark:hover:text-[#c3a47b] hover:border-[#b3894e]/40 dark:hover:border-[#c3a47b]/40"
             )}
           >
-            <Sparkles className="h-[18px] w-[18px] text-violet-400" strokeWidth={ICON_STROKE} />
+            <Sparkles className="h-[18px] w-[18px] text-[#b3894e] dark:text-[#c3a47b]" strokeWidth={ICON_STROKE} />
             {!isPro && (
-              <span className="absolute -top-1 -right-1 flex items-center justify-center rounded-full bg-gradient-to-r from-amber-500 to-amber-600 px-1 py-0.2 text-[8px] font-black uppercase tracking-wider text-zinc-950 shadow-sm shadow-amber-500/50 ring-1 ring-amber-400/50">
+              <span className="absolute -top-1 -right-1 flex items-center justify-center rounded-full bg-[#c3a47b] px-1 py-0.2 text-[8px] font-black uppercase tracking-wider text-[#161311] shadow-sm shadow-[#c3a47b]/50 ring-1 ring-[#e8cca4]/50">
                 VIP
               </span>
             )}
@@ -274,9 +280,9 @@ export function FloatingDock({
           {/* Widget Không gian âm thanh tập trung (Ambient Sounds) */}
           <AmbientSoundWidget />
 
-          <span className="mx-1 hidden h-5 w-px bg-zinc-800/60 sm:block" aria-hidden />
+          <span className="mx-1 hidden h-5 w-px bg-stone-300 dark:bg-[#3a3128] sm:block" aria-hidden />
 
-          <Dialog>
+          <Dialog open={leaveDialogOpen} onOpenChange={setLeaveDialogOpen}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <DialogTrigger asChild>
@@ -291,24 +297,139 @@ export function FloatingDock({
               </TooltipTrigger>
               <TooltipContent side="top">Rời phòng</TooltipContent>
             </Tooltip>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Rời phòng học?</DialogTitle>
-                <DialogDescription>
-                  Bạn sẽ rời khỏi phòng hiện tại. Có thể tham gia lại bằng mã mời.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button variant="outline" type="button">
+
+            {participantsCount <= 1 ? (
+              /* Khi chỉ có 1 người duy nhất trong phòng (dù là Host hay Thành viên còn lại): Ẩn 'Chỉ rời cuộc gọi', hiển thị ĐÚNG 1 lựa chọn 'Kết thúc phiên học' */
+              <DialogContent className="sm:max-w-[420px]">
+                <DialogHeader>
+                  <DialogTitle className="text-base sm:text-lg font-serif">
+                    Kết thúc phiên học?
+                  </DialogTitle>
+                  <DialogDescription className="text-xs sm:text-sm text-stone-500 dark:text-[#a89887]">
+                    Bạn là người duy nhất trong phòng. Khi bạn rời đi, phiên học sẽ kết thúc và giải phóng tài nguyên.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <DialogFooter className="mt-4 gap-2 sm:gap-0 sm:justify-end">
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={() => setLeaveDialogOpen(false)}
+                    className="text-stone-600 dark:text-[#d8c8b4] text-xs sm:text-sm"
+                  >
+                    Ở lại phòng
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    type="button"
+                    onClick={() => {
+                      setLeaveDialogOpen(false);
+                      onLeave?.({ terminate: true, action: "terminate" });
+                    }}
+                    className="text-xs sm:text-sm"
+                  >
+                    Kết thúc phiên học
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            ) : isHost ? (
+              /* Khi phòng có > 1 người: Hiển thị 2 lựa chọn theo chuẩn Google Meet */
+              <DialogContent className="sm:max-w-[450px]">
+                <DialogHeader>
+                  <DialogTitle className="text-base sm:text-lg font-serif">
+                    Rời khỏi cuộc gọi
+                  </DialogTitle>
+                    <DialogDescription className="text-xs sm:text-sm text-stone-500 dark:text-[#a89887]">
+                      Bạn là chủ phòng. Hãy chọn cách bạn muốn rời phiên học:
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="flex flex-col gap-2.5 my-3">
+                    {/* Lựa chọn 1: Chỉ rời cuộc gọi */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLeaveDialogOpen(false);
+                        onLeave?.({ terminate: false, action: "leave_only" });
+                      }}
+                      className="w-full text-left p-3.5 rounded-xl border border-stone-200 dark:border-[#3a3128] hover:bg-stone-100 dark:hover:bg-[#26201c] transition flex items-start gap-3 group"
+                    >
+                      <div className="p-2 rounded-lg bg-stone-200/70 dark:bg-[#322a24] text-stone-700 dark:text-[#d8c8b4] group-hover:text-[#2D241E] dark:group-hover:text-[#f5ede3] shrink-0 mt-0.5">
+                        <LogOut className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold text-[#2D241E] dark:text-[#f5ede3]">
+                          Chỉ rời cuộc gọi
+                        </div>
+                        <div className="text-xs text-stone-500 dark:text-[#a89887] mt-0.5 leading-relaxed">
+                          Chủ phòng rời đi nhưng phòng học vẫn tiếp tục. Phòng sẽ tự đóng sau 10 phút nếu bạn không quay lại.
+                        </div>
+                      </div>
+                    </button>
+
+                    {/* Lựa chọn 2: Kết thúc cuộc gọi cho mọi người */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLeaveDialogOpen(false);
+                        onLeave?.({ terminate: true, action: "terminate" });
+                      }}
+                      className="w-full text-left p-3.5 rounded-xl border border-rose-500/30 bg-rose-50/50 dark:bg-rose-950/20 hover:bg-rose-100/70 dark:hover:bg-rose-950/40 transition flex items-start gap-3 group"
+                    >
+                      <div className="p-2 rounded-lg bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5">
+                        <PhoneOff className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold text-rose-600 dark:text-rose-400">
+                          Kết thúc cuộc gọi cho mọi người
+                        </div>
+                        <div className="text-xs text-rose-500/90 dark:text-rose-300/80 mt-0.5 leading-relaxed">
+                          Đóng phòng học ngay lập tức, chuyển toàn bộ học viên về trang chủ và giải phóng tài nguyên.
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+
+                  <DialogFooter className="sm:justify-end">
+                    <Button
+                      variant="ghost"
+                      type="button"
+                      onClick={() => setLeaveDialogOpen(false)}
+                      className="text-stone-600 dark:text-[#d8c8b4] text-xs sm:text-sm"
+                    >
+                      Ở lại phòng
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              ) : (
+                <DialogContent className="sm:max-w-[400px]">
+                <DialogHeader>
+                  <DialogTitle className="text-base sm:text-lg font-serif">Rời phòng học?</DialogTitle>
+                  <DialogDescription className="text-xs sm:text-sm">
+                    Bạn sẽ rời khỏi phòng hiện tại. Có thể tham gia lại bất cứ lúc nào bằng mã phòng.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter className="mt-4 gap-2 sm:gap-0">
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={() => setLeaveDialogOpen(false)}
+                  >
                     Ở lại
                   </Button>
-                </DialogClose>
-                <Button variant="destructive" type="button" onClick={onLeave}>
-                  Rời phòng
-                </Button>
-              </DialogFooter>
-            </DialogContent>
+                  <Button
+                    variant="destructive"
+                    type="button"
+                    onClick={() => {
+                      setLeaveDialogOpen(false);
+                      onLeave?.({ terminate: false, action: "leave_only" });
+                    }}
+                  >
+                    Rời phòng
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            )}
           </Dialog>
         </nav>
       </div>

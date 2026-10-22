@@ -19,6 +19,9 @@ import {
   CheckCheck,
   ShieldCheck,
   UserCheck,
+  UserPlus,
+  UserMinus,
+  Clock,
   MicOff,
   Pin,
   PinOff,
@@ -30,7 +33,8 @@ import {
 import { cn } from "@/lib/utils";
 import { StudyAITutorPanel } from "@/components/room/StudyAITutorPanel";
 import { ICON_STROKE } from "@/lib/constants";
-import { uploadApi } from "@/lib/api";
+import { uploadApi, friendsApi } from "@/lib/api";
+import { connectSocket } from "@/lib/socket";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,6 +45,7 @@ import { FileItemCard } from "@/components/files/FileItemCard";
 import { FileUploadBar } from "@/components/files/FileUploadBar";
 import { ImageLightboxModal } from "@/components/files/ImageLightboxModal";
 import { PaginationControl } from "@/components/ui/PaginationControl";
+import { UnfriendConfirmModal } from "@/components/social/UnfriendConfirmModal";
 import {
   Dialog,
   DialogContent,
@@ -99,6 +104,9 @@ export function RoomSidePanel({
   onUnpinItem,
   onCreatePoll,
   onVotePoll,
+  onLockPoll,
+  onRecallPoll,
+  onAddOptionPoll,
   currentUserId,
   roomName,
   hostId = "",
@@ -117,6 +125,7 @@ export function RoomSidePanel({
   onApproveJoinRequest,
   onRejectJoinRequest,
   onApproveAllJoinRequests,
+  onAddToast,
 }) {
   const [tab, setTab] = useState(initialTab || "chat");
 
@@ -125,6 +134,202 @@ export function RoomSidePanel({
       setTab(initialTab);
     }
   }, [initialTab]);
+
+  // Trạng thái bạn bè để hiển thị nút kết bạn nhanh
+  const [friendsSet, setFriendsSet] = useState(new Set());
+  const [pendingSentSet, setPendingSentSet] = useState(new Set());
+  const [sendingFriendId, setSendingFriendId] = useState(null);
+  const [unfriendMember, setUnfriendMember] = useState(null);
+  const [isUnfriending, setIsUnfriending] = useState(false);
+
+  // Lắng nghe socket realtime đồng bộ trạng thái bạn bè / hủy kết bạn
+  useEffect(() => {
+    const socket = connectSocket();
+    if (!socket) return;
+
+    const handleFriendRemoved = ({ friendId } = {}) => {
+      if (friendId) {
+        setFriendsSet((prev) => {
+          const next = new Set(prev);
+          next.delete(String(friendId));
+          return next;
+        });
+      }
+    };
+
+    const handleFriendAccepted = (data = {}) => {
+      const fId = data?.friend?._id || data?.friend?.id || data?.friendId;
+      if (fId) {
+        setFriendsSet((prev) => new Set([...prev, String(fId)]));
+        setPendingSentSet((prev) => {
+          const next = new Set(prev);
+          next.delete(String(fId));
+          return next;
+        });
+      }
+    };
+
+    socket.on("friend_removed", handleFriendRemoved);
+    socket.on("friend:removed", handleFriendRemoved);
+    socket.on("friend_status_updated", ({ friendId, isFriend } = {}) => {
+      if (isFriend === false && friendId) handleFriendRemoved({ friendId });
+      else if (isFriend === true && friendId) {
+        setFriendsSet((prev) => new Set([...prev, String(friendId)]));
+        setPendingSentSet((prev) => {
+          const next = new Set(prev);
+          next.delete(String(friendId));
+          return next;
+        });
+      }
+    });
+    socket.on("friend:accepted", handleFriendAccepted);
+    socket.on("friend_accepted", handleFriendAccepted);
+
+    const handleLocalRemoved = (e) => {
+      const fId = e.detail?.friendId;
+      if (fId) handleFriendRemoved({ friendId: fId });
+    };
+    const handleLocalAccepted = (e) => {
+      handleFriendAccepted(e.detail);
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("friend:removed", handleLocalRemoved);
+      window.addEventListener("vsr:friend-removed", handleLocalRemoved);
+      window.addEventListener("friend:accepted", handleLocalAccepted);
+      window.addEventListener("vsr:friend-accepted", handleLocalAccepted);
+    }
+
+    return () => {
+      socket.off("friend_removed", handleFriendRemoved);
+      socket.off("friend:removed", handleFriendRemoved);
+      socket.off("friend_status_updated");
+      socket.off("friend:accepted", handleFriendAccepted);
+      socket.off("friend_accepted", handleFriendAccepted);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("friend:removed", handleLocalRemoved);
+        window.removeEventListener("vsr:friend-removed", handleLocalRemoved);
+        window.removeEventListener("friend:accepted", handleLocalAccepted);
+        window.removeEventListener("vsr:friend-accepted", handleLocalAccepted);
+      }
+    };
+  }, []);
+
+  const handleConfirmUnfriend = async () => {
+    if (!unfriendMember) return;
+    const targetId = String(unfriendMember.id || unfriendMember._id);
+    setIsUnfriending(true);
+    try {
+      await friendsApi.unfriend(targetId);
+      setFriendsSet((prev) => {
+        const next = new Set(prev);
+        next.delete(targetId);
+        return next;
+      });
+      window.dispatchEvent(
+        new CustomEvent("friend:removed", { detail: { friendId: targetId } })
+      );
+      if (onAddToast) {
+        onAddToast({
+          type: "info",
+          title: "Đã hủy kết bạn",
+          body: `Đã hủy kết bạn với ${unfriendMember.name || "người dùng"}.`,
+        });
+      }
+      setUnfriendMember(null);
+    } catch (err) {
+      console.error("Lỗi khi hủy kết bạn:", err);
+      if (onAddToast) {
+        onAddToast({
+          type: "error",
+          title: "Lỗi thao tác",
+          body: err?.data?.message || err?.message || "Không thể hủy kết bạn lúc này.",
+        });
+      }
+    } finally {
+      setIsUnfriending(false);
+    }
+  };
+
+  // Tải danh sách bạn bè và lời mời đã gửi
+  useEffect(() => {
+    let isMounted = true;
+    const fetchFriendsData = async () => {
+      try {
+        const [friendsRes, requestsRes] = await Promise.allSettled([
+          friendsApi.list(),
+          friendsApi.getRequests(),
+        ]);
+
+        if (isMounted) {
+          if (friendsRes.status === "fulfilled" && friendsRes.value?.data?.friends) {
+            const fIds = friendsRes.value.data.friends.map((f) => String(f._id || f.id));
+            setFriendsSet(new Set(fIds));
+          }
+          if (requestsRes.status === "fulfilled" && requestsRes.value?.data?.requests) {
+            const rIds = requestsRes.value.data.requests
+              .map((r) => String(r.recipient?._id || r.recipient || r.to || r._id))
+              .filter(Boolean);
+            setPendingSentSet(new Set(rIds));
+          }
+        }
+      } catch (_) {}
+    };
+
+    fetchFriendsData();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId]);
+
+  const handleAddFriend = async (member) => {
+    const targetId = String(member.id);
+    if (friendsSet.has(targetId) || pendingSentSet.has(targetId) || sendingFriendId === targetId) return;
+
+    setSendingFriendId(targetId);
+    try {
+      const res = await friendsApi.sendRequest({
+        recipientId: targetId,
+        userId: targetId,
+        email: member.email,
+      });
+
+      if (res?.data?.autoAccepted) {
+        setFriendsSet((prev) => new Set([...prev, targetId]));
+        if (onAddToast) {
+          onAddToast({
+            type: "success",
+            title: "Bạn bè mới",
+            body: `Hai bạn đã trở thành bạn bè với ${member.name}!`,
+          });
+        }
+      } else {
+        setPendingSentSet((prev) => new Set([...prev, targetId]));
+        if (onAddToast) {
+          onAddToast({
+            type: "success",
+            title: "Đã gửi lời mời",
+            body: `Đã gửi lời mời kết bạn đến ${member.name}`,
+          });
+        }
+      }
+    } catch (err) {
+      const errMsg = err?.data?.message || err?.message || "";
+      if (errMsg.includes("đã là bạn") || errMsg.includes("bạn bè")) {
+        setFriendsSet((prev) => new Set([...prev, targetId]));
+      } else if (errMsg.includes("trước đó")) {
+        setPendingSentSet((prev) => new Set([...prev, targetId]));
+      }
+      if (onAddToast) {
+        onAddToast({
+          type: "warning",
+          title: "Thông báo kết bạn",
+          body: errMsg || "Không thể gửi lời mời kết bạn.",
+        });
+      }
+    } finally {
+      setSendingFriendId(null);
+    }
+  };
 
   const [draft, setDraft] = useState("");
   const [actionModal, setActionModal] = useState(null); // { type: 'kick' | 'ban', member }
@@ -358,19 +563,24 @@ export function RoomSidePanel({
 
   return (
     <>
-      <Sheet open={open} onOpenChange={onOpenChange}>
+      <Sheet open={open} onOpenChange={onOpenChange} modal={false}>
         <SheetContent
           side="right"
-          className="flex w-full flex-col gap-0 border-zinc-800/60 p-0 sm:max-w-md"
-          onPointerDownOutside={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => {
+            // Không preventDefault nếu đang mở modal bình chọn hoặc click vào popup/dialog
+            if (pollModalOpen || e.target?.closest?.("[role='dialog']") || e.target?.closest?.(".fixed")) {
+              return;
+            }
+            e.preventDefault();
+          }}
         >
-          <SheetHeader className="border-b border-zinc-800/60 pb-4">
-            <SheetTitle>Không gian phòng</SheetTitle>
-            <SheetDescription>{roomName || "Virtual Study Room"}</SheetDescription>
+          <SheetHeader className="border-b border-stone-200 dark:border-[#2d2620] pb-4 px-5 pt-5">
+            <SheetTitle className="text-[#2D241E] dark:text-[#f5ede3] font-serif">Không gian phòng</SheetTitle>
+            <SheetDescription className="text-stone-500 dark:text-[#75695e]">{roomName || "Virtual Study Room"}</SheetDescription>
           </SheetHeader>
 
           {/* Đồng hồ Pomodoro đồng bộ */}
-          <div className="space-y-3 border-b border-zinc-800/60 px-5 py-4">
+          <div className="space-y-3 border-b border-stone-200 bg-stone-100/60 dark:border-[#2d2620] dark:bg-[#201b18]/60 px-5 py-4">
             <PomodoroWidget
               minutes={pomodoroMinutes}
               seconds={pomodoroSeconds}
@@ -382,8 +592,8 @@ export function RoomSidePanel({
             />
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="type-meta">Thời lượng phiên</span>
-                <span className="font-mono text-xs tabular-nums text-zinc-300">
+                <span className="type-meta text-stone-500 dark:text-[#75695e]">Thời lượng phiên</span>
+                <span className="font-mono text-xs tabular-nums text-[#2D241E] dark:text-[#d8c8b4]">
                   {focusMinutes?.[0] ?? 25} phút
                 </span>
               </div>
@@ -399,7 +609,7 @@ export function RoomSidePanel({
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 border-b border-zinc-800/60 px-4 py-2">
+          <div className="flex gap-1 border-b border-stone-200 px-4 py-2 bg-stone-100/70 dark:border-[#2d2620] dark:bg-[#181513]/40">
             <TabButton
               active={tab === "chat"}
               onClick={() => setTab("chat")}
@@ -579,13 +789,56 @@ export function RoomSidePanel({
                               </Badge>
                             )}
 
-                            {isHost && (
+                            {isHost ? (
                               <Badge
                                 variant="outline"
-                                className="shrink-0 border-zinc-700 text-zinc-400"
+                                className="shrink-0 border-zinc-700 text-zinc-400 text-[10px]"
                               >
                                 Chủ phòng
                               </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="shrink-0 border-zinc-800 text-zinc-500 text-[10px]"
+                              >
+                                Thành viên
+                              </Badge>
+                            )}
+
+                            {/* Nút Kết bạn nhanh: Chỉ hiển thị cho thành viên khác (không hiện cho bản thân) */}
+                            {!member.isYou && (
+                              friendsSet.has(String(member.id)) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setUnfriendMember(member)}
+                                  className="group inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 hover:bg-rose-950/40 text-emerald-400 hover:text-rose-400 border border-emerald-500/30 hover:border-rose-600/40 transition shrink-0 cursor-pointer shadow-sm active:scale-95"
+                                  title={`Đã là bạn bè với ${member.name}. Bấm để hủy kết bạn.`}
+                                >
+                                  <UserCheck className="h-3 w-3 group-hover:hidden" />
+                                  <span className="group-hover:hidden">Bạn bè</span>
+                                  <UserMinus className="h-3 w-3 hidden group-hover:inline text-rose-400" />
+                                  <span className="hidden group-hover:inline text-rose-400 font-semibold">✕ Hủy kết bạn</span>
+                                </button>
+                              ) : pendingSentSet.has(String(member.id)) ? (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-800 text-zinc-400 border border-zinc-700 shrink-0 opacity-75"
+                                  title="Đã gửi lời mời kết bạn"
+                                >
+                                  <Clock className="h-3 w-3" />
+                                  Đã gửi
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={sendingFriendId === String(member.id)}
+                                  onClick={() => handleAddFriend(member)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/30 transition shrink-0 cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+                                  title={`Kết bạn với ${member.name}`}
+                                >
+                                  <UserPlus className="h-3 w-3" />
+                                  {sendingFriendId === String(member.id) ? "Đang gửi..." : "+ Kết bạn"}
+                                </button>
+                              )
                             )}
 
                             {canModerate && (
@@ -1029,6 +1282,10 @@ export function RoomSidePanel({
                       );
                     }
 
+                    const isHost = Boolean(
+                      currentUserId && hostId && String(currentUserId) === String(hostId)
+                    );
+
                     // Nếu là tin nhắn dạng Poll (Bình chọn nhanh)
                     if (msg.type === "poll" || msg.poll) {
                       return (
@@ -1039,16 +1296,19 @@ export function RoomSidePanel({
                         >
                           <PollMessageCard
                             poll={msg.poll}
+                            messageId={msg.id}
                             currentUserId={currentUserId}
                             onVote={onVotePoll}
+                            onLock={onLockPoll}
+                            onRecall={onRecallPoll || onRecallMessage}
+                            onRecallPoll={onRecallPoll || onRecallMessage}
+                            onAddOption={onAddOptionPoll}
+                            isHost={isHost}
+                            isRecalled={msg.isRecalled || msg.poll?.isRecalled}
                           />
                         </div>
                       );
                     }
-
-                    const isHost = Boolean(
-                      currentUserId && hostId && String(currentUserId) === String(hostId)
-                    );
                     const senderId = msg.sender?.id || msg.sender?._id || msg.senderId;
                     const isMe =
                       (currentUserId && String(senderId) === String(currentUserId)) ||
@@ -1129,14 +1389,14 @@ export function RoomSidePanel({
                                   setTimeout(() => targetEl.classList.remove("ring-2", "ring-amber-400/50"), 1500);
                                 }
                               }}
-                              className="cursor-pointer mb-0.5 flex items-center gap-1.5 rounded-xl border-l-2 border-amber-500 bg-zinc-800/80 px-2.5 py-1 text-[11px] text-zinc-300 transition hover:bg-zinc-800 max-w-[85%]"
+                              className="cursor-pointer mb-0.5 flex items-center gap-1.5 rounded-xl border-l-2 border-[#c3a47b] bg-[#201b18] px-2.5 py-1 text-[11px] text-[#d8c8b4] transition hover:bg-[#26201c] max-w-[85%]"
                               title="Bấm để cuộn tới tin nhắn gốc"
                             >
-                              <CornerUpLeft className="h-3 w-3 text-amber-400 shrink-0" />
-                              <span className="font-semibold text-amber-300 shrink-0">
+                              <CornerUpLeft className="h-3 w-3 text-[#c3a47b] shrink-0" />
+                              <span className="font-semibold text-[#f5ede3] shrink-0">
                                 {msg.replyTo.senderName}:
                               </span>
-                              <span className="truncate text-zinc-400">
+                              <span className="truncate text-[#a89b8d]">
                                 {msg.replyTo.contentPreview}
                               </span>
                             </div>
@@ -1154,7 +1414,7 @@ export function RoomSidePanel({
                                 })
                               }
                               title="Trả lời tin nhắn"
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-zinc-500 hover:text-amber-300 hover:bg-zinc-800/80 focus:opacity-100"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-[#75695e] hover:text-[#c3a47b] hover:bg-[#26201c] focus:opacity-100"
                             >
                               <CornerUpLeft className="h-3 w-3" />
                             </button>
@@ -1174,7 +1434,7 @@ export function RoomSidePanel({
                                   })
                                 }
                                 title="Ghim tin nhắn này"
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-zinc-500 hover:text-amber-300 hover:bg-zinc-800/80 focus:opacity-100"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-[#75695e] hover:text-[#c3a47b] hover:bg-[#26201c] focus:opacity-100"
                               >
                                 <Pin className="h-3 w-3 -rotate-45" />
                               </button>
@@ -1186,15 +1446,15 @@ export function RoomSidePanel({
                                 type="button"
                                 onClick={() => setRecallTargetMsg(msg)}
                                 title="Thu hồi với mọi người"
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-zinc-500 hover:text-rose-400 hover:bg-zinc-800/80 focus:opacity-100"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-[#75695e] hover:text-rose-400 hover:bg-[#26201c] focus:opacity-100"
                               >
                                 <RotateCcw className="h-3 w-3" />
                               </button>
                             )}
-                            <span className="font-mono text-[10px] text-zinc-500">
+                            <span className="font-mono text-[10px] text-[#75695e]">
                               {msg.time}
                             </span>
-                            <span className="text-xs font-medium text-zinc-400">
+                            <span className="text-xs font-medium text-[#a89b8d]">
                               Bạn
                             </span>
                           </div>
@@ -1210,7 +1470,7 @@ export function RoomSidePanel({
                           )}
 
                           {msg.text ? (
-                            <div className="max-w-[85%] rounded-2xl rounded-tr-xs bg-zinc-800 px-3.5 py-2 text-sm leading-relaxed text-zinc-100 shadow-sm break-words">
+                            <div className="max-w-[85%] rounded-2xl rounded-tr-xs border border-[#c3a47b]/40 bg-[#b3894e]/15 text-[#2D241E] dark:border-[#c3a47b]/30 dark:bg-[#29231f] dark:text-[#f5ede3] px-3.5 py-2 text-sm leading-relaxed shadow-sm break-words">
                               {msg.text}
                             </div>
                           ) : null}
@@ -1239,24 +1499,24 @@ export function RoomSidePanel({
                                   setTimeout(() => targetEl.classList.remove("ring-2", "ring-amber-400/50"), 1500);
                                 }
                               }}
-                              className="cursor-pointer mb-0.5 flex items-center gap-1.5 rounded-xl border-l-2 border-amber-500 bg-zinc-800/80 px-2.5 py-1 text-[11px] text-zinc-300 transition hover:bg-zinc-800 max-w-full"
+                              className="cursor-pointer mb-0.5 flex items-center gap-1.5 rounded-xl border-l-2 border-[#b3894e] bg-stone-200/70 text-[#2D241E] dark:border-[#c3a47b] dark:bg-[#201b18] dark:text-[#d8c8b4] px-2.5 py-1 text-[11px] transition hover:bg-stone-200 dark:hover:bg-[#26201c] max-w-full"
                               title="Bấm để cuộn tới tin nhắn gốc"
                             >
-                              <CornerUpLeft className="h-3 w-3 text-amber-400 shrink-0" />
-                              <span className="font-semibold text-amber-300 shrink-0">
+                              <CornerUpLeft className="h-3 w-3 text-[#b3894e] dark:text-[#c3a47b] shrink-0" />
+                              <span className="font-semibold text-[#2D241E] dark:text-[#f5ede3] shrink-0">
                                 {msg.replyTo.senderName}:
                               </span>
-                              <span className="truncate text-zinc-400">
+                              <span className="truncate text-[#615247] dark:text-[#a89b8d]">
                                 {msg.replyTo.contentPreview}
                               </span>
                             </div>
                           )}
 
                           <div className="flex items-center gap-1.5">
-                            <span className="truncate text-xs font-medium text-zinc-300">
+                            <span className="truncate text-xs font-medium text-[#2D241E] dark:text-[#f5ede3]">
                               {senderName}
                             </span>
-                            <span className="shrink-0 font-mono text-[10px] text-zinc-500">
+                            <span className="shrink-0 font-mono text-[10px] text-stone-500 dark:text-[#75695e]">
                               {msg.time}
                             </span>
 
@@ -1271,7 +1531,7 @@ export function RoomSidePanel({
                                 })
                               }
                               title="Trả lời tin nhắn này"
-                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-zinc-500 hover:text-amber-300 hover:bg-zinc-800/80 focus:opacity-100"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-[#75695e] hover:text-[#c3a47b] hover:bg-[#26201c] focus:opacity-100"
                             >
                               <CornerUpLeft className="h-3 w-3" />
                             </button>
@@ -1291,7 +1551,7 @@ export function RoomSidePanel({
                                   })
                                 }
                                 title="Ghim tin nhắn này"
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-zinc-500 hover:text-amber-300 hover:bg-zinc-800/80 focus:opacity-100"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-[#75695e] hover:text-[#c3a47b] hover:bg-[#26201c] focus:opacity-100"
                               >
                                 <Pin className="h-3 w-3 -rotate-45" />
                               </button>
@@ -1303,7 +1563,7 @@ export function RoomSidePanel({
                                 type="button"
                                 onClick={() => setRecallTargetMsg(msg)}
                                 title="Chủ phòng: Thu hồi tin nhắn này"
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-zinc-500 hover:text-rose-400 hover:bg-zinc-800/80 focus:opacity-100"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md text-[#75695e] hover:text-rose-400 hover:bg-[#26201c] focus:opacity-100"
                               >
                                 <RotateCcw className="h-3 w-3" />
                               </button>
@@ -1321,7 +1581,7 @@ export function RoomSidePanel({
                           )}
 
                           {msg.text ? (
-                            <div className="rounded-2xl rounded-tl-xs border border-zinc-800/60 bg-zinc-900 px-3.5 py-2 text-sm leading-relaxed text-zinc-200 break-words">
+                            <div className="rounded-2xl rounded-tl-xs border border-stone-200 bg-white text-[#2D241E] dark:border-[#2d2620] dark:bg-[#201b18] dark:text-[#a89b8d] px-3.5 py-2 text-sm leading-relaxed shadow-xs break-words">
                               {msg.text}
                             </div>
                           ) : null}
@@ -1336,24 +1596,24 @@ export function RoomSidePanel({
               {/* Form chat & đính kèm file */}
               <form
                 onSubmit={handleSend}
-                className="flex flex-col border-t border-zinc-800/60 bg-zinc-950/40 p-3 sm:p-4 gap-2"
+                className="flex flex-col border-t border-stone-200 bg-[#F2ECE1]/60 dark:border-[#2d2620] dark:bg-[#141210]/60 p-3 sm:p-4 gap-2"
               >
                 {/* Thanh preview Đang trả lời */}
                 {replyingTo && (
-                  <div className="flex items-center justify-between rounded-xl border border-zinc-800/90 bg-zinc-900/95 px-3 py-1.5 text-xs text-zinc-300 shadow-sm backdrop-blur animate-in fade-in slide-in-from-bottom-1 duration-200">
+                  <div className="flex items-center justify-between rounded-xl border border-stone-300 bg-[#FAF8F5] text-[#2D241E] dark:border-[#3a3128] dark:bg-[#1e1916] dark:text-[#d8c8b4] px-3 py-1.5 text-xs shadow-sm backdrop-blur animate-in fade-in slide-in-from-bottom-1 duration-200">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <CornerUpLeft className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                      <span className="font-semibold text-amber-300 shrink-0">
+                      <CornerUpLeft className="h-3.5 w-3.5 text-[#b3894e] dark:text-[#c3a47b] shrink-0" />
+                      <span className="font-semibold text-[#2D241E] dark:text-[#f5ede3] shrink-0">
                         Đang trả lời {replyingTo.senderName}:
                       </span>
-                      <span className="truncate text-zinc-400 text-[11px] italic">
+                      <span className="truncate text-[#615247] dark:text-[#a89b8d] text-[11px] italic">
                         {replyingTo.contentPreview}
                       </span>
                     </div>
                     <button
                       type="button"
                       onClick={() => setReplyingTo(null)}
-                      className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 rounded transition"
+                      className="p-1 text-stone-400 hover:text-[#2D241E] dark:text-[#75695e] dark:hover:text-[#f5ede3] hover:bg-stone-200 dark:hover:bg-[#201b18] rounded transition"
                       title="Hủy trả lời"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -1388,7 +1648,7 @@ export function RoomSidePanel({
                     onClick={() => chatFileInputRef.current?.click()}
                     title="Đính kèm tệp (ảnh, tài liệu tối đa 15MB)"
                     disabled={chatFileUploading?.uploading}
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 transition disabled:opacity-50"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-stone-300 bg-[#EAE3D5] text-[#2D241E] hover:bg-stone-200 dark:border-[#3a3128] dark:bg-[#201b18] dark:text-[#d8c8b4] dark:hover:bg-[#26201c] dark:hover:text-[#c3a47b] transition disabled:opacity-50"
                   >
                     <Paperclip className="h-4 w-4" strokeWidth={1.75} />
                   </button>
@@ -1398,7 +1658,7 @@ export function RoomSidePanel({
                     type="button"
                     onClick={() => setPollModalOpen(true)}
                     title="Tạo bình chọn nhanh (Quick Poll)"
-                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-amber-400 transition"
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-stone-300 bg-[#EAE3D5] text-[#2D241E] hover:bg-stone-200 dark:border-[#3a3128] dark:bg-[#201b18] dark:text-[#d8c8b4] dark:hover:bg-[#26201c] dark:hover:text-[#c3a47b] transition"
                   >
                     <BarChart2 className="h-4 w-4" strokeWidth={1.75} />
                   </button>
@@ -1415,7 +1675,7 @@ export function RoomSidePanel({
                         : "Nhập tin nhắn..."
                     }
                     maxLength={500}
-                    className="h-10 flex-1 rounded-lg border border-zinc-800/60 bg-zinc-950 px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+                    className="h-10 flex-1 rounded-lg border border-stone-300 bg-[#FAF8F5] px-3 text-sm text-[#2D241E] placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-[#b3894e] dark:border-[#3a3128] dark:bg-[#141210] dark:text-[#f5ede3] dark:placeholder:text-[#75695e] dark:focus:ring-[#c3a47b]"
                     aria-label="Tin nhắn"
                   />
                   <Button
@@ -1486,13 +1746,13 @@ export function RoomSidePanel({
             open={Boolean(recallTargetMsg)}
             onOpenChange={(open) => !open && setRecallTargetMsg(null)}
           >
-            <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+            <DialogContent className="border-[#3a3128] bg-[#1c1815] text-[#f5ede3] sm:max-w-md">
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-base font-semibold text-zinc-100">
-                  <RotateCcw className="h-4 w-4 text-amber-400" />
+                <DialogTitle className="flex items-center gap-2 text-base font-semibold text-[#f5ede3]">
+                  <RotateCcw className="h-4 w-4 text-[#c3a47b]" />
                   Thu hồi tin nhắn với mọi người?
                 </DialogTitle>
-                <DialogDescription className="text-xs text-zinc-400 leading-relaxed pt-1">
+                <DialogDescription className="text-xs text-[#a89b8d] leading-relaxed pt-1">
                   Tin nhắn này (bao gồm văn bản, hình ảnh hoặc tệp đính kèm) sẽ bị gỡ bỏ với tất cả thành viên trong phòng học. Tệp gốc trên hệ thống đám mây sẽ được dọn dẹp sạch sẽ.
                 </DialogDescription>
               </DialogHeader>
@@ -1502,7 +1762,7 @@ export function RoomSidePanel({
                   variant="ghost"
                   size="sm"
                   onClick={() => setRecallTargetMsg(null)}
-                  className="text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 text-xs"
+                  className="text-[#a89b8d] hover:text-[#f5ede3] hover:bg-[#201b18] text-xs"
                 >
                   Hủy
                 </Button>
@@ -1516,7 +1776,7 @@ export function RoomSidePanel({
                     }
                     setRecallTargetMsg(null);
                   }}
-                  className="bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs gap-1.5"
+                  className="bg-[#8b2626] hover:bg-[#a63030] text-[#f5ede3] font-medium text-xs gap-1.5"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Thu hồi với mọi người
@@ -1530,14 +1790,14 @@ export function RoomSidePanel({
             open={Boolean(transferHostTarget)}
             onOpenChange={(open) => !open && setTransferHostTarget(null)}
           >
-            <DialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+            <DialogContent className="border-[#3a3128] bg-[#1c1815] text-[#f5ede3] sm:max-w-md">
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-base font-semibold text-zinc-100">
-                  <Crown className="h-4 w-4 text-amber-400" />
+                <DialogTitle className="flex items-center gap-2 text-base font-semibold text-[#f5ede3]">
+                  <Crown className="h-4 w-4 text-[#c3a47b]" />
                   Chuyển giao quyền Chủ phòng
                 </DialogTitle>
-                <DialogDescription className="text-xs text-zinc-400 leading-relaxed pt-1">
-                  Bạn có chắc muốn chỉ định <span className="font-semibold text-zinc-200">&quot;{transferHostTarget?.name}&quot;</span> làm Chủ phòng học mới? Toàn bộ quyền điều phối và quản trị sẽ được chuyển giao ngay lập tức.
+                <DialogDescription className="text-xs text-[#a89b8d] leading-relaxed pt-1">
+                  Bạn có chắc muốn chỉ định <span className="font-semibold text-[#f5ede3]">&quot;{transferHostTarget?.name}&quot;</span> làm Chủ phòng học mới? Toàn bộ quyền điều phối và quản trị sẽ được chuyển giao ngay lập tức.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter className="mt-4 flex gap-2 sm:justify-end">
@@ -1546,7 +1806,7 @@ export function RoomSidePanel({
                   variant="ghost"
                   size="sm"
                   onClick={() => setTransferHostTarget(null)}
-                  className="text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 text-xs"
+                  className="text-[#a89b8d] hover:text-[#f5ede3] hover:bg-[#201b18] text-xs"
                 >
                   Hủy
                 </Button>
@@ -1568,23 +1828,39 @@ export function RoomSidePanel({
             </DialogContent>
           </Dialog>
 
-          {/* Modal tạo bình chọn nhanh (Quick Poll) */}
-          <CreatePollModal
-            isOpen={pollModalOpen}
-            onClose={() => setPollModalOpen(false)}
-            onCreatePoll={(pollData) => {
-              onCreatePoll?.(pollData);
-              setPollModalOpen(false);
-            }}
-          />
         </SheetContent>
       </Sheet>
+
+      {/* Modal tạo bình chọn nhanh (Quick Poll) */}
+      <CreatePollModal
+        isOpen={pollModalOpen}
+        open={pollModalOpen}
+        onClose={() => setPollModalOpen(false)}
+        onOpenChange={(v) => !v && setPollModalOpen(false)}
+        onSubmit={(pollData) => {
+          onCreatePoll?.(pollData);
+          setPollModalOpen(false);
+        }}
+        onCreatePoll={(pollData) => {
+          onCreatePoll?.(pollData);
+          setPollModalOpen(false);
+        }}
+      />
 
       {/* Lightbox modal xem ảnh phóng to */}
       <ImageLightboxModal
         isOpen={Boolean(lightboxUrl)}
         imageUrl={lightboxUrl}
         onClose={() => setLightboxUrl(null)}
+      />
+
+      {/* Modal xác nhận hủy kết bạn */}
+      <UnfriendConfirmModal
+        isOpen={Boolean(unfriendMember)}
+        onClose={() => !isUnfriending && setUnfriendMember(null)}
+        onConfirm={handleConfirmUnfriend}
+        friendName={unfriendMember?.name || "thành viên này"}
+        isLoading={isUnfriending}
       />
     </>
   );
@@ -1599,8 +1875,8 @@ function TabButton({ active, onClick, children, id }) {
       className={cn(
         "inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-medium transition duration-150 ease-out",
         active
-          ? "bg-zinc-900 text-zinc-100"
-          : "text-zinc-500 hover:bg-zinc-900/60 hover:text-zinc-300"
+          ? "border border-[#c3a47b]/40 bg-stone-200 text-[#2D241E] dark:bg-[#29231f] dark:text-[#f5ede3] shadow-xs"
+          : "text-stone-500 hover:bg-stone-200/60 hover:text-[#2D241E] dark:text-[#75695e] dark:hover:bg-[#201b18] dark:hover:text-[#d8c8b4]"
       )}
     >
       {children}

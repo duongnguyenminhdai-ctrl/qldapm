@@ -50,10 +50,10 @@ export function PaginationControl({
     >
       {/* Tóm tắt số lượng mục */}
       {!compact && totalItems > 0 && (
-        <p className="text-zinc-500 font-mono text-[11px] order-2 sm:order-1">
-          Hiển thị <span className="text-zinc-300 font-medium">{startItem}</span> -{" "}
-          <span className="text-zinc-300 font-medium">{endItem}</span> trong{" "}
-          <span className="text-zinc-300 font-medium">{totalItems}</span> mục
+        <p className="text-[#75695e] font-mono text-[11px] order-2 sm:order-1">
+          Hiển thị <span className="text-[#d8c8b4] font-medium">{startItem}</span> -{" "}
+          <span className="text-[#d8c8b4] font-medium">{endItem}</span> trong{" "}
+          <span className="text-[#d8c8b4] font-medium">{totalItems}</span> mục
         </p>
       )}
 
@@ -64,7 +64,7 @@ export function PaginationControl({
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage <= 1}
           aria-label="Trang trước"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-35 disabled:hover:bg-zinc-900/60 disabled:hover:text-zinc-400 transition"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#3a3128] bg-[#201b18] text-[#a89b8d] hover:bg-[#26201c] hover:text-[#f5ede3] disabled:opacity-35 disabled:hover:bg-[#201b18] disabled:hover:text-[#a89b8d] transition"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
@@ -74,7 +74,7 @@ export function PaginationControl({
             return (
               <span
                 key={`ellipsis-${idx}`}
-                className="inline-flex h-8 w-6 items-center justify-center text-zinc-600"
+                className="inline-flex h-8 w-6 items-center justify-center text-[#75695e]"
               >
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </span>
@@ -91,8 +91,8 @@ export function PaginationControl({
               className={cn(
                 "inline-flex h-8 min-w-[2rem] px-2 items-center justify-center rounded-lg text-xs font-mono transition",
                 isActive
-                  ? "bg-zinc-100 text-zinc-950 font-semibold shadow-xs"
-                  : "border border-zinc-800/80 bg-zinc-900/40 text-zinc-400 hover:bg-zinc-800/80 hover:text-zinc-200"
+                  ? "bg-[#c3a47b] text-[#161311] font-semibold shadow-xs"
+                  : "border border-[#3a3128] bg-[#201b18] text-[#a89b8d] hover:bg-[#26201c] hover:text-[#f5ede3]"
               )}
             >
               {p}
@@ -105,7 +105,7 @@ export function PaginationControl({
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage >= totalPages}
           aria-label="Trang tiếp theo"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-35 disabled:hover:bg-zinc-900/60 disabled:hover:text-zinc-400 transition"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#3a3128] bg-[#201b18] text-[#a89b8d] hover:bg-[#26201c] hover:text-[#f5ede3] disabled:opacity-35 disabled:hover:bg-[#201b18] disabled:hover:text-[#a89b8d] transition"
         >
           <ChevronRight className="h-4 w-4" />
         </button>

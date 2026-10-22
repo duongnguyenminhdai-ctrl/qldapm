@@ -128,12 +128,12 @@ export function LiveKitVideoStage({
         <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden p-1">
           {/* Khung viền ôm sát vừa đủ theo tỷ lệ và kích thước thực tế của màn hình được chia sẻ */}
           <div
-            className="relative flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950 shadow-2xl transition-all duration-200"
+            className="relative flex max-h-full max-w-full items-center justify-center overflow-hidden rounded-2xl border border-[#2d2620] bg-[#1c1815] shadow-2xl transition-all duration-200"
             style={aspectStyle}
           >
-            <div className="absolute left-3 top-3 z-20 flex items-center gap-2 rounded-lg border border-zinc-800/80 bg-zinc-950/80 px-2.5 py-1 backdrop-blur">
-              <ScreenShare className="h-3.5 w-3.5 text-emerald-400" />
-              <span className="text-xs font-medium text-zinc-200">
+            <div className="absolute left-3 top-3 z-20 flex items-center gap-2 rounded-lg border border-[#3a3128] bg-[#1e1916]/90 px-2.5 py-1 backdrop-blur shadow-sm">
+              <ScreenShare className="h-3.5 w-3.5 text-[#c3a47b]" />
+              <span className="text-xs font-medium text-[#f5ede3]">
                 Đang chia sẻ: {sharerName}
               </span>
             </div>
@@ -169,10 +169,10 @@ export function LiveKitVideoStage({
     count === 1
       ? "mx-auto max-w-3xl grid-cols-1 grid-rows-1"
       : count === 2
-        ? "mx-auto max-w-5xl grid-cols-1 grid-rows-2 sm:grid-cols-2 sm:grid-rows-1"
+        ? "mx-auto max-w-5xl grid-cols-1 sm:grid-cols-2 grid-rows-2 sm:grid-rows-1"
         : count <= 4
-          ? "grid-cols-1 grid-rows-4 sm:grid-cols-2 sm:grid-rows-2"
-          : "grid-cols-1 grid-rows-6 sm:grid-cols-2 sm:grid-rows-3 lg:grid-cols-3 lg:grid-rows-2";
+          ? "grid-cols-2 grid-rows-2 sm:grid-cols-2 sm:grid-rows-2"
+          : "grid-cols-2 grid-rows-3 sm:grid-cols-2 sm:grid-rows-3 lg:grid-cols-3 lg:grid-rows-2";
 
   return (
     <div className={cn("grid h-full min-h-0 w-full gap-3", gridClass)}>

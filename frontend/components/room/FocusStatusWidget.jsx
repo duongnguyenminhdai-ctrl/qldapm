@@ -29,7 +29,7 @@ export function FocusStatusBadge({ status, className }) {
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-zinc-700/60 bg-zinc-950/85 px-2 py-0.5 text-[11px] font-medium text-zinc-200 shadow-md backdrop-blur-md transition-all select-none animate-in fade-in zoom-in-95 duration-200",
+        "inline-flex items-center gap-1.5 rounded-full border border-[#3a3128] bg-[#1e1916]/90 px-2.5 py-0.5 text-[11px] font-medium text-[#d8c8b4] shadow-md backdrop-blur-md transition-all select-none animate-in fade-in zoom-in-95 duration-200",
         className
       )}
     >
@@ -69,10 +69,10 @@ export function FocusStatusSelector({
           type="button"
           id="btn-focus-status-trigger"
           className={cn(
-            "group inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 select-none",
+            "group inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all focus:outline-none focus-visible:ring-1 focus-visible:ring-[#c3a47b] select-none",
             currentStatus
-              ? "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/60 shadow-sm"
-              : "border-zinc-800 bg-zinc-900/80 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200",
+              ? "border-[#c3a47b]/50 bg-[#c3a47b]/15 text-[#e8cca4] hover:bg-[#c3a47b]/25 shadow-xs"
+              : "border-[#3a3128] bg-[#201b18] text-[#a89b8d] hover:bg-[#26201c] hover:text-[#f5ede3]",
             className
           )}
           title="Đặt trạng thái tập trung"
@@ -85,7 +85,7 @@ export function FocusStatusSelector({
           </span>
           <ChevronDown
             className={cn(
-              "h-3 w-3 text-zinc-500 transition-transform duration-200 group-hover:text-zinc-300",
+              "h-3 w-3 text-[#75695e] transition-transform duration-200 group-hover:text-[#d8c8b4]",
               open && "rotate-180"
             )}
           />
@@ -95,12 +95,12 @@ export function FocusStatusSelector({
       <DropdownMenuContent
         align="start"
         sideOffset={6}
-        className="w-52 p-1.5 bg-zinc-900/95 border-zinc-800 backdrop-blur-md shadow-xl"
+        className="w-52 p-1.5 bg-[#1c1815] border-[#3a3128] backdrop-blur-md shadow-xl"
       >
-        <DropdownMenuLabel className="px-2 py-1 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+        <DropdownMenuLabel className="px-2 py-1 text-[11px] font-semibold text-[#75695e] uppercase tracking-wider">
           Trạng thái tập trung
         </DropdownMenuLabel>
-        <DropdownMenuSeparator className="bg-zinc-800/80" />
+        <DropdownMenuSeparator className="bg-[#2d2620]" />
 
         <div className="space-y-0.5 py-1">
           {FOCUS_STATUS_PRESETS.map((preset) => {
@@ -112,8 +112,8 @@ export function FocusStatusSelector({
                 className={cn(
                   "flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-xs cursor-pointer transition",
                   active
-                    ? "bg-zinc-800 text-amber-300 font-medium"
-                    : "text-zinc-200 hover:bg-zinc-800/60"
+                    ? "bg-[#29231f] text-[#f5ede3] border border-[#c3a47b]/40 font-medium"
+                    : "text-[#d8c8b4] hover:bg-[#201b18] hover:text-[#f5ede3]"
                 )}
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -121,7 +121,7 @@ export function FocusStatusSelector({
                   <span className="truncate">{preset.label}</span>
                 </div>
                 {active && (
-                  <Check className="h-3.5 w-3.5 text-amber-400 shrink-0" strokeWidth={2.2} />
+                  <Check className="h-3.5 w-3.5 text-[#c3a47b] shrink-0" strokeWidth={2.2} />
                 )}
               </DropdownMenuItem>
             );
@@ -130,10 +130,10 @@ export function FocusStatusSelector({
 
         {currentStatus && (
           <>
-            <DropdownMenuSeparator className="bg-zinc-800/80" />
+            <DropdownMenuSeparator className="bg-[#2d2620]" />
             <DropdownMenuItem
               onClick={handleClear}
-              className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-rose-400 cursor-pointer hover:bg-rose-950/30 hover:text-rose-300 transition"
+              className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-rose-400 cursor-pointer hover:bg-[#8b2626]/20 hover:text-rose-300 transition"
             >
               <X className="h-3.5 w-3.5 shrink-0" />
               <span>Xóa trạng thái</span>

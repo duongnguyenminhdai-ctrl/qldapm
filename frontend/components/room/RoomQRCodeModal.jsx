@@ -51,15 +51,15 @@ export function RoomQRCodeModal({ open, onOpenChange, roomCode, roomTitle, acces
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm border-zinc-800/80 bg-zinc-950 p-6 text-zinc-100 shadow-2xl backdrop-blur-xl">
+      <DialogContent className="max-w-sm border-stone-200 bg-[#FAF8F5] p-6 text-[#2D241E] shadow-2xl backdrop-blur-sm dark:border-[#3a3128] dark:bg-[#1c1815] dark:text-[#f5ede3]">
         <DialogHeader className="text-center sm:text-center">
-          <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-2xl border border-zinc-800/80 bg-zinc-900 text-zinc-200">
-            <QrCode className="h-5 w-5 text-zinc-300" strokeWidth={1.75} />
+          <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-2xl border border-stone-200 bg-[#EAE3D5] text-[#b3894e] dark:border-[#3a3128] dark:bg-[#201b18] dark:text-[#c3a47b]">
+            <QrCode className="h-5 w-5 text-[#b3894e] dark:text-[#c3a47b]" strokeWidth={1.75} />
           </div>
-          <DialogTitle className="text-lg font-bold text-zinc-100">
+          <DialogTitle className="font-serif text-lg font-bold text-[#2D241E] dark:text-[#f5ede3]">
             Mã QR vào phòng học
           </DialogTitle>
-          <DialogDescription className="text-xs text-zinc-400">
+          <DialogDescription className="text-xs text-[#615247] dark:text-[#a89b8d]">
             Quét mã để tham gia ngay trên điện thoại hoặc chia sẻ cho bạn bè.
           </DialogDescription>
         </DialogHeader>
@@ -68,35 +68,35 @@ export function RoomQRCodeModal({ open, onOpenChange, roomCode, roomTitle, acces
           {/* Khung hiển thị QR code bo góc trắng nổi bật */}
           <div
             ref={qrRef}
-            className="group relative flex items-center justify-center rounded-2xl bg-white p-4 shadow-xl ring-1 ring-zinc-800 transition-transform hover:scale-[1.02]"
+            className="group relative flex items-center justify-center rounded-2xl bg-white p-4 shadow-xl ring-1 ring-stone-200 dark:ring-[#3a3128] transition-transform hover:scale-[1.02]"
           >
             <QRCodeCanvas
               value={roomUrl}
               size={210}
               level="H"
               marginSize={0}
-              fgColor="#09090b"
+              fgColor="#141210"
               bgColor="#ffffff"
             />
           </div>
 
           {/* Mã phòng & Trạng thái phòng */}
           <div className="w-full space-y-2 text-center">
-            <div className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-1.5">
-              <span className="text-xs text-zinc-400">Mã phòng:</span>
-              <span className="font-mono text-sm font-bold tracking-wider text-amber-400">
+            <div className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-[#EAE3D5] dark:border-[#3a3128] dark:bg-[#201b18] px-3 py-1.5">
+              <span className="text-xs text-[#615247] dark:text-[#a89b8d]">Mã phòng:</span>
+              <span className="font-mono text-sm font-bold tracking-wider text-[#b3894e] dark:text-[#c3a47b]">
                 {roomCode}
               </span>
             </div>
 
             <div>
               {isApprovalRequired ? (
-                <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-medium text-amber-300">
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 text-[11px] font-medium text-amber-800 dark:text-[#e8cca4]">
                   <ShieldCheck className="h-3.5 w-3.5" />
                   <span>Có xét duyệt (Chủ phòng cần đồng ý)</span>
                 </div>
               ) : (
-                <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-300">
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-[#EAE3D5] text-[#2D241E] dark:border-[#3a3128] dark:bg-[#201b18] dark:text-[#d8c8b4] px-3 py-1 text-[11px] font-medium">
                   <Users className="h-3.5 w-3.5" />
                   <span>Mở tự do (Vào thẳng phòng)</span>
                 </div>
@@ -111,11 +111,11 @@ export function RoomQRCodeModal({ open, onOpenChange, roomCode, roomTitle, acces
               variant="outline"
               onClick={handleCopyLink}
               id="btn-qr-copy-link"
-              className="gap-1.5 border-zinc-800 bg-zinc-900/80 text-xs font-medium text-zinc-200 hover:bg-zinc-800 hover:text-white"
+              className="gap-1.5 border-stone-300 bg-[#EAE3D5] text-xs font-medium text-[#2D241E] hover:bg-stone-200 dark:border-[#3a3128] dark:bg-[#201b18] dark:text-[#d8c8b4] dark:hover:bg-[#26201c] dark:hover:text-[#f5ede3]"
             >
               {copied ? (
                 <>
-                  <Check className="h-3.5 w-3.5 text-emerald-400" />
+                  <Check className="h-3.5 w-3.5 text-[#c3a47b]" />
                   <span>Đã sao chép!</span>
                 </>
               ) : (
@@ -130,7 +130,7 @@ export function RoomQRCodeModal({ open, onOpenChange, roomCode, roomTitle, acces
               type="button"
               onClick={handleDownloadQR}
               id="btn-qr-download"
-              className="gap-1.5 bg-zinc-100 text-xs font-medium text-zinc-950 hover:bg-white shadow-sm"
+              className="gap-1.5 bg-[#c3a47b] text-xs font-medium text-[#161311] hover:bg-[#d6b88f] shadow-sm"
             >
               <Download className="h-3.5 w-3.5" />
               <span>Tải ảnh QR</span>

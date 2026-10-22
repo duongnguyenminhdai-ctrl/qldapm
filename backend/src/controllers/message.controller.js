@@ -153,6 +153,7 @@ exports.getMessages = async (req, res, next) => {
 
     const messages = await Message.find({ conversationId })
       .populate("sender", "_id name email avatar")
+      .populate("reactions.userId", "_id name avatar")
       .sort({ createdAt: 1 })
       .limit(100);
 
@@ -169,7 +170,7 @@ exports.getMessages = async (req, res, next) => {
 
 /**
  * POST /api/messages/send
- * Gửi tin nhắn mới
+ * Gửi tin nhắn mới (hỗ trợ text, voice message audio, hình ảnh và tệp)
  */
 exports.sendMessage = async (req, res, next) => {
   try {
@@ -177,21 +178,36 @@ exports.sendMessage = async (req, res, next) => {
     const {
       conversationId,
       text,
+      content,
       image,
       fileUrl,
       fileName,
       fileType,
       fileSize,
+      type,
+      audioUrl,
+      duration,
     } = req.body;
 
-    const trimmedText = typeof text === "string" ? text.trim() : "";
+    const trimmedText = typeof (content || text) === "string" ? (content || text).trim() : "";
     const trimmedImage = typeof image === "string" ? image.trim() : "";
     const trimmedFileUrl = typeof fileUrl === "string" ? fileUrl.trim() : "";
+    const trimmedAudioUrl = typeof audioUrl === "string" ? audioUrl.trim() : "";
 
-    if (!conversationId || (!trimmedText && !trimmedImage && !trimmedFileUrl)) {
+    const messageType =
+      type === "audio" || trimmedAudioUrl
+        ? "audio"
+        : type === "image" || trimmedImage
+        ? "image"
+        : "text";
+
+    if (
+      !conversationId ||
+      (!trimmedText && !trimmedImage && !trimmedFileUrl && !trimmedAudioUrl)
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Vui lòng nhập nội dung tin nhắn, đính kèm ảnh hoặc tệp tin.",
+        message: "Vui lòng nhập nội dung tin nhắn, ghi âm giọng nói hoặc đính kèm tệp tin.",
       });
     }
 
@@ -210,18 +226,22 @@ exports.sendMessage = async (req, res, next) => {
     const message = await Message.create({
       conversationId,
       sender: currentUserId,
+      type: messageType,
       text: trimmedText,
+      audioUrl: trimmedAudioUrl,
+      duration: Number(duration) || 0,
       image: trimmedImage,
       fileUrl: trimmedFileUrl,
       fileName: fileName || "",
-      fileType: fileType || "",
+      fileType: fileType || (messageType === "audio" ? "audio/webm" : ""),
       fileSize: fileSize || 0,
     });
 
     // Cập nhật lastMessage trong conversation
     let lastText = trimmedText;
     if (!lastText) {
-      if (trimmedImage) lastText = "[Hình ảnh]";
+      if (messageType === "audio") lastText = "🎤 [Tin nhắn thoại]";
+      else if (trimmedImage) lastText = "[Hình ảnh]";
       else if (trimmedFileUrl) lastText = `[Tài liệu: ${fileName || "Tập tin"}]`;
     }
 
@@ -232,15 +252,19 @@ exports.sendMessage = async (req, res, next) => {
     };
     await conversation.save();
 
-    const populatedMessage = await Message.findById(message._id).populate(
-      "sender",
-      "_id name email avatar"
-    );
+    const populatedMessage = await Message.findById(message._id)
+      .populate("sender", "_id name email avatar")
+      .populate("reactions.userId", "_id name avatar");
 
     // Phát socket realtime tới room conversationId và tới từng participant (nếu chưa join room)
     const io = getIo();
     if (io) {
       io.to(`conversation:${conversationId}`).emit("chat:message", populatedMessage);
+
+      // Nếu là voice message, phát sự kiện new_voice_message chuẩn xác theo yêu cầu
+      if (messageType === "audio") {
+        io.to(`conversation:${conversationId}`).emit("new_voice_message", populatedMessage);
+      }
 
       // Thông báo cập nhật danh sách hội thoại tới tất cả participants
       conversation.participants.forEach((pId) => {
@@ -249,6 +273,9 @@ exports.sendMessage = async (req, res, next) => {
           lastMessage: conversation.lastMessage,
           message: populatedMessage,
         });
+        if (messageType === "audio") {
+          io.to(`user:${pId}`).emit("new_voice_message", populatedMessage);
+        }
       });
     }
 
@@ -435,6 +462,121 @@ exports.revokeMessage = async (req, res, next) => {
       message: "Đã thu hồi tin nhắn thành công.",
       data: {
         message: populatedMessage,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST or PATCH /api/messages/:id/react
+ * Thả hoặc hủy cảm xúc (Emoji reaction) phong cách Messenger
+ * Body: { emoji }
+ */
+exports.reactToMessage = async (req, res, next) => {
+  try {
+    const currentUserId = req.user.id;
+    const messageId = req.params.id;
+    const { emoji } = req.body;
+
+    if (!emoji || typeof emoji !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng chọn biểu tượng cảm xúc.",
+      });
+    }
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy tin nhắn.",
+      });
+    }
+
+    // BẢO MẬT: Kiểm tra xem user có phải là thành viên trong cuộc trò chuyện chứa tin nhắn này không (chống IDOR)
+    const isMember = await Conversation.exists({
+      _id: message.conversationId,
+      participants: currentUserId,
+    });
+    if (!isMember) {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền tương tác với tin nhắn trong cuộc trò chuyện này.",
+      });
+    }
+
+    if (!Array.isArray(message.reactions)) {
+      message.reactions = [];
+    }
+
+    const existingIndex = message.reactions.findIndex(
+      (r) => String(r.userId) === String(currentUserId)
+    );
+
+    let userReaction = null;
+    if (existingIndex > -1) {
+      // Nếu cùng 1 emoji -> Hủy cảm xúc (toggle off)
+      if (message.reactions[existingIndex].emoji === emoji) {
+        message.reactions.splice(existingIndex, 1);
+        userReaction = null;
+      } else {
+        // Khác emoji -> Cập nhật sang emoji mới
+        message.reactions[existingIndex].emoji = emoji;
+        message.reactions[existingIndex].createdAt = new Date();
+        userReaction = emoji;
+      }
+    } else {
+      // Chưa thả cảm xúc -> Thêm mới
+      message.reactions.push({
+        userId: currentUserId,
+        emoji,
+        createdAt: new Date(),
+      });
+      userReaction = emoji;
+    }
+
+    await message.save();
+
+    const populated = await Message.findById(message._id)
+      .populate("sender", "_id name email avatar")
+      .populate("reactions.userId", "_id name avatar");
+
+    const payload = {
+      messageId: String(message._id),
+      conversationId: String(message.conversationId),
+      reactions: populated.reactions || [],
+      userId: String(currentUserId),
+      emoji: userReaction,
+    };
+
+    const io = getIo();
+    if (io) {
+      io.to(`conversation:${message.conversationId}`).emit(
+        "message_reaction_updated",
+        payload
+      );
+      io.to(`conversation:${message.conversationId}`).emit(
+        "chat:message-reaction-updated",
+        payload
+      );
+
+      const conversation = await Conversation.findById(message.conversationId).select("participants");
+      if (conversation?.participants) {
+        conversation.participants.forEach((pId) => {
+          io.to(`user:${pId}`).emit("message_reaction_updated", payload);
+          io.to(`user:${pId}`).emit("chat:message-reaction-updated", payload);
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        messageId: message._id,
+        reactions: populated.reactions,
+        userReaction,
       },
     });
   } catch (error) {

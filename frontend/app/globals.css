@@ -3,39 +3,45 @@
 @tailwind utilities;
 
 /*
-  Virtual Study Room - calm / monastic dark system
-  Accent: single soft zinc-100 (no neon)
-  Shape: tiles rounded-2xl, controls rounded-xl, inputs rounded-lg
-  Motion: MOTION_INTENSITY 3 - hover/active only, reduced-motion safe
+  Virtual Study Room - ThreeUI Design System
+  Editorial Warm Dark & Vintage Ochre Gold
+  Background Canvas: #141210 / #181513
+  Card / Panel Surface: #201b18 (hover: #29231f)
+  Modal / Popover / Dropdown: #1c1815
+  Accent Primary (Vàng cát ThreeUI): #c3a47b (hover: #d6b88f, bright: #e8cca4)
+  Border viền mờ: #3a3128 (focus/active: #5c4e40)
+  Text Title: #f5ede3
+  Text Body: #a89b8d
+  Text Muted: #75695e
 */
 
 @layer base {
   :root {
-    color-scheme: light;
-    --background: 60 5% 98%;
-    --foreground: 240 10% 4%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 4%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 4%;
-    --primary: 240 10% 4%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 5% 94%;
-    --secondary-foreground: 240 10% 4%;
-    --muted: 240 5% 94%;
-    --muted-foreground: 240 4% 46%;
-    --accent: 240 5% 92%;
-    --accent-foreground: 240 10% 4%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 240 5% 65%;
+    color-scheme: dark;
+    --background: 24 12% 8%; /* #181513 */
+    --foreground: 33 47% 93%; /* #f5ede3 */
+    --card: 23 14% 11%; /* #201b18 */
+    --card-foreground: 33 47% 93%; /* #f5ede3 */
+    --popover: 26 14% 10%; /* #1c1815 */
+    --popover-foreground: 33 47% 93%; /* #f5ede3 */
+    --primary: 34 39% 62%; /* #c3a47b */
+    --primary-foreground: 24 14% 8%; /* #161311 */
+    --secondary: 23 14% 14%; /* #29231f */
+    --secondary-foreground: 33 47% 93%; /* #f5ede3 */
+    --muted: 26 14% 12%;
+    --muted-foreground: 29 11% 45%; /* #75695e */
+    --accent: 34 39% 62%; /* #c3a47b */
+    --accent-foreground: 24 14% 8%; /* #161311 */
+    --destructive: 0 57% 35%; /* #8b2626 */
+    --destructive-foreground: 33 47% 93%;
+    --border: 30 18% 19%; /* #3a3128 */
+    --input: 30 18% 19%; /* #3a3128 */
+    --ring: 34 39% 62%; /* #c3a47b */
     --radius: 0.75rem;
 
-    --surface: 0 0% 100%;
-    --surface-raised: 0 0% 100%;
-    --hairline: 240 6% 90%;
+    --surface: 23 14% 11%; /* #201b18 */
+    --surface-raised: 24 14% 14%; /* #29231f */
+    --hairline: 30 18% 19%; /* #3a3128 */
     --icon-stroke: 1.5;
 
     --z-base: 0;
@@ -47,101 +53,335 @@
 
   .dark {
     color-scheme: dark;
-    --background: 240 6% 6%;
-    --foreground: 0 0% 96%;
-    --card: 240 5% 9%;
-    --card-foreground: 0 0% 96%;
-    --popover: 240 5% 9%;
-    --popover-foreground: 0 0% 96%;
-    --primary: 0 0% 96%;
-    --primary-foreground: 240 6% 8%;
-    --secondary: 240 4% 14%;
-    --secondary-foreground: 0 0% 92%;
-    --muted: 240 4% 14%;
-    --muted-foreground: 240 5% 58%;
-    --accent: 240 4% 16%;
-    --accent-foreground: 0 0% 96%;
-    --destructive: 0 55% 48%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 4% 18%;
-    --input: 240 4% 18%;
-    --ring: 240 5% 64%;
+    --background: 24 12% 8%; /* #181513 */
+    --foreground: 33 47% 93%; /* #f5ede3 */
+    --card: 23 14% 11%; /* #201b18 */
+    --card-foreground: 33 47% 93%; /* #f5ede3 */
+    --popover: 26 14% 10%; /* #1c1815 */
+    --popover-foreground: 33 47% 93%; /* #f5ede3 */
+    --primary: 34 39% 62%; /* #c3a47b */
+    --primary-foreground: 24 14% 8%; /* #161311 */
+    --secondary: 23 14% 14%; /* #29231f */
+    --secondary-foreground: 33 47% 93%; /* #f5ede3 */
+    --muted: 26 14% 12%;
+    --muted-foreground: 29 11% 45%; /* #75695e */
+    --accent: 34 39% 62%; /* #c3a47b */
+    --accent-foreground: 24 14% 8%; /* #161311 */
+    --destructive: 0 57% 35%; /* #8b2626 */
+    --destructive-foreground: 33 47% 93%;
+    --border: 30 18% 19%; /* #3a3128 */
+    --input: 30 18% 19%; /* #3a3128 */
+    --ring: 34 39% 62%; /* #c3a47b */
 
-    --surface: 240 5% 9%;
-    --surface-raised: 240 4% 11%;
-    --hairline: 240 4% 18%;
+    --surface: 23 14% 11%; /* #201b18 */
+    --surface-raised: 24 14% 14%; /* #29231f */
+    --hairline: 30 18% 19%; /* #3a3128 */
+  }
+
+  .light {
+    color-scheme: light;
+    --background: 38 33% 96%; /* #F7F4EB - Giấy cổ Parchment / Kem sáng */
+    --foreground: 25 22% 16%; /* #2D241E - Nâu đậm mực cổ / Đen than */
+    --card: 38 30% 98%; /* #fbf9f5 */
+    --card-foreground: 25 22% 16%; /* #2D241E */
+    --popover: 38 30% 98%; /* #fbf9f5 */
+    --popover-foreground: 25 22% 16%; /* #2D241E */
+    --primary: 34 50% 48%; /* #b3894e - Ochre Gold */
+    --primary-foreground: 38 33% 97%; /* #fbf9f5 */
+    --secondary: 35 22% 91%; /* #ece5da */
+    --secondary-foreground: 25 22% 20%; /* #362d26 */
+    --muted: 36 22% 92%; /* #ece6dc */
+    --muted-foreground: 28 14% 42%; /* #6e6358 */
+    --accent: 34 50% 48%; /* #b3894e */
+    --accent-foreground: 38 33% 97%;
+    --destructive: 0 65% 45%;
+    --destructive-foreground: 38 33% 97%;
+    --border: 35 25% 84%; /* #E6DEC8 - Viền giấy cổ tinh tế */
+    --input: 35 25% 84%;
+    --ring: 34 50% 48%;
+
+    --surface: 38 30% 98%;
+    --surface-raised: 35 22% 91%;
+    --hairline: 35 25% 84%;
   }
 
   * {
     @apply border-border;
   }
 
+  /* ══════════════════════════════════════════════════════════════════════════
+     CHẾ ĐỘ SÁNG (LIGHT MODE): PARCHMENT GIẤY CỔ / THƯ VIỆN HỌC THUẬT SÁNG ẤM
+     ══════════════════════════════════════════════════════════════════════════ */
+  html.light,
+  html.light body {
+    background-color: #F7F4EB !important;
+    color: #2D241E !important;
+  }
+
+  /* 1. Nền trang chủ 3D Book Showcase */
+  html.light .book-showcase-root,
+  html.light .bs-stage {
+    background:
+      radial-gradient(circle at 50% 85%, rgba(214, 206, 189, 0.45), transparent 42%),
+      radial-gradient(circle at 15% 10%, rgba(222, 213, 200, 0.35), transparent 35%),
+      linear-gradient(180deg, #FAF8F5 0%, #F7F4EB 50%, #ECE6D8 100%) !important;
+    color: #2D241E !important;
+  }
+
+  /* Lớp texture hạt nền stage giữ ở z-index thấp, tuyệt đối không phủ lên sách */
+  html.light .bs-stage::after {
+    z-index: 1 !important;
+    opacity: 0.06 !important;
+    pointer-events: none !important;
+  }
+
+  /* Watermark chữ chìm "Học Tập" đổi sang màu be/nâu nhạt cổ điển #D6CEBD */
+  html.light .bs-hero-word {
+    color: #D6CEBD !important;
+    opacity: 0.95 !important;
+    text-shadow: 0 4px 28px rgba(180, 160, 130, 0.22) !important;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════════════
+     ĐỒNG BỘ 100% HIỂN THỊ CẢ 3 CUỐN SÁCH 3D GIỮA LIGHT VÀ DARK MODE
+     ══════════════════════════════════════════════════════════════════════════ */
+  /* TUYỆT ĐỐI không can thiệp bộ lọc (CSS filter: brightness/contrast/opacity) lên 3 cuốn sách */
+  html.light .bs-shelf,
+  html.light .bs-book-card {
+    filter: none !important;
+  }
+
+  /* Video bề mặt giữ trọn 100% độ rực rỡ, ánh vàng hổ phách (#F59E0B / #D97706) ở tâm la bàn */
+  html.light .bs-cover-motion {
+    filter: none !important;
+    opacity: 0.9 !important;
+  }
+
+  /* Giữ nguyên vẹn 100% texture, viền và shader vật liệu của 3 cuốn sách như Dark mode */
+  html.light .bs-front-cover,
+  html.light .bs-front-cover::before,
+  html.light .bs-front-cover::after,
+  html.light .bs-book-back,
+  html.light .bs-page-block {
+    filter: none !important;
+  }
+
+  /* Bóng tiếp xúc (contact drop-shadow) dưới chân sách để sách nằm tự nhiên trên nền kem */
+  html.light .bs-book-shadow {
+    background: rgba(24, 18, 10, 0.5) !important;
+    filter: blur(22px) !important;
+    opacity: 0.75 !important;
+  }
+
+  html.light .bs-topbar {
+    background: linear-gradient(180deg, rgba(247, 244, 235, 0.95) 0%, rgba(247, 244, 235, 0) 100%) !important;
+    border-bottom: 1px solid rgba(195, 164, 123, 0.3) !important;
+  }
+
+  html.light .bs-brand-name {
+    color: #2D241E !important;
+  }
+
+  html.light .bs-brand-sub {
+    color: #7c6f64 !important;
+  }
+
+  html.light .bs-profile-link,
+  html.light .bs-equipped-badge,
+  html.light .bs-admin-link,
+  html.light .bs-logout-btn {
+    background: rgba(238, 230, 219, 0.85) !important;
+    border-color: rgba(195, 164, 123, 0.45) !important;
+    color: #2D241E !important;
+  }
+
+  html.light .bs-drawer {
+    background: rgba(251, 249, 245, 0.97) !important;
+    border-color: rgba(195, 164, 123, 0.4) !important;
+    color: #2D241E !important;
+    box-shadow: 0 16px 40px rgba(70, 50, 30, 0.12) !important;
+  }
+
+  html.light .bs-panel-title {
+    color: #2D241E !important;
+  }
+
+  html.light .bs-stat-card,
+  html.light .bs-room-card,
+  html.light .bs-title-card,
+  html.light .bs-milestone {
+    background: rgba(245, 240, 232, 0.95) !important;
+    border-color: rgba(195, 164, 123, 0.4) !important;
+    color: #2D241E !important;
+  }
+
+  html.light .bs-title-name {
+    color: #2D241E !important;
+  }
+
+  html.light .bs-stat-value {
+    color: #2D241E !important;
+  }
+
+  /* 2. Cổng Quản trị (/admin) ở chế độ Sáng */
+  html.light .admin-portal-wrapper {
+    background-color: #F7F4EB !important;
+    color: #2D241E !important;
+  }
+
+  html.light .admin-sidebar-box {
+    background-color: #F2ECE1 !important;
+    border-color: rgba(251, 191, 36, 0.45) !important;
+    color: #2D241E !important;
+  }
+
+  html.light .admin-card-glass {
+    background-color: rgba(255, 255, 255, 0.88) !important;
+    border-color: rgba(251, 191, 36, 0.45) !important;
+    color: #2D241E !important;
+    box-shadow: 0 4px 16px rgba(180, 150, 100, 0.08) !important;
+  }
+
+  html.light .admin-header-glass {
+    background-color: rgba(242, 236, 225, 0.92) !important;
+    border-color: rgba(251, 191, 36, 0.4) !important;
+    color: #2D241E !important;
+  }
+
+  html.light .admin-table-head {
+    background-color: rgba(254, 243, 199, 0.65) !important;
+    border-color: rgba(251, 191, 36, 0.35) !important;
+    color: #2D241E !important;
+  }
+
+  html.light .admin-table-row {
+    border-color: rgba(251, 191, 36, 0.2) !important;
+    color: #2D241E !important;
+  }
+
+  html.light .admin-table-row:hover {
+    background-color: rgba(254, 243, 199, 0.4) !important;
+  }
+
+  html.light .admin-price-highlight {
+    color: #b45309 !important;
+    font-weight: 700 !important;
+  }
+
+  /* Toàn web scrollbar tone đồng mờ thanh mảnh ThreeUI */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(195, 164, 123, 0.28) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: rgba(195, 164, 123, 0.28);
+    border-radius: 999px;
+    border: 1px solid rgba(58, 49, 40, 0.4);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(214, 184, 143, 0.48);
+  }
+
+  html {
+    height: 100%;
+    overflow-x: hidden;
+  }
+
   body {
-    @apply min-h-[100dvh] bg-stone-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+    @apply min-h-[100dvh] bg-[#141210] text-[#a89b8d] antialiased;
+    height: 100%;
+    overflow-x: hidden;
+    overscroll-behavior-y: none;
+  }
+
+  /* Khóa cứng kích thước và chống scroll / layout shift cho trang Virtual Study Room */
+  html:has(.book-showcase-root),
+  body:has(.book-showcase-root) {
+    overflow: hidden !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    width: 100% !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    position: fixed !important;
+    inset: 0 !important;
+    overscroll-behavior: none !important;
   }
 
   ::selection {
-    @apply bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-50;
+    @apply bg-[#c3a47b]/30 text-[#f5ede3];
   }
 }
 
 @layer components {
   .surface {
-    @apply border border-zinc-200/80 bg-white/80 dark:border-zinc-800/60 dark:bg-zinc-900/50;
+    @apply border border-[#3a3128] bg-[#201b18];
   }
 
   .surface-raised {
-    @apply border border-zinc-200/90 bg-white dark:border-zinc-800/60 dark:bg-zinc-900/80;
+    @apply border border-[#3a3128] bg-[#29231f];
   }
 
   .surface-blur {
-    @apply border border-zinc-200/80 bg-white/70 backdrop-blur-md dark:border-zinc-800/60 dark:bg-zinc-900/70;
+    @apply border border-[#3a3128] bg-[#1e1916]/95 backdrop-blur-md;
   }
 
   @media (prefers-reduced-transparency: reduce) {
     .surface-blur {
-      @apply bg-white dark:bg-zinc-900 backdrop-blur-none;
+      @apply bg-[#1e1916] backdrop-blur-none;
     }
   }
 
   .hairline {
-    @apply border-zinc-200/80 dark:border-zinc-800/60;
+    @apply border-[#3a3128];
   }
 
   .dock-control {
-    @apply relative flex h-10 w-10 items-center justify-center rounded-xl text-zinc-600 transition duration-taste ease-taste hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 dark:text-zinc-400 dark:hover:bg-zinc-800/80 dark:hover:text-zinc-100;
+    @apply relative flex h-11 w-11 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl text-[#615247] dark:text-[#a89b8d] transition duration-taste ease-taste hover:bg-stone-200/80 hover:text-[#b3894e] dark:hover:bg-[#26201c] dark:hover:text-[#c3a47b] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#c3a47b];
   }
 
   .dock-control-on {
-    @apply bg-zinc-800 text-zinc-100;
+    @apply bg-[#c3a47b]/20 text-[#b3894e] dark:text-[#c3a47b] border border-[#c3a47b]/40;
   }
 
   .dock-control-off {
-    @apply text-zinc-500 hover:text-zinc-300;
+    @apply text-stone-400 dark:text-[#75695e] hover:text-[#2D241E] dark:hover:text-[#a89b8d];
   }
 
   .dock-control-danger {
-    @apply text-zinc-400 hover:bg-zinc-800 hover:text-rose-300;
+    @apply text-[#615247] dark:text-[#a89b8d] hover:bg-[#8b2626]/20 hover:text-[#dc2626] dark:hover:text-[#f87171] hover:border-[#8b2626]/50;
   }
 
   .video-frame {
-    @apply relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-900;
+    @apply relative h-full min-h-0 w-full overflow-hidden rounded-2xl border border-stone-200 dark:border-[#2d2620] bg-stone-100 dark:bg-[#1c1815];
   }
 
   .video-frame-speaking {
-    @apply border-zinc-500/80;
+    @apply border-[#c3a47b]/80 ring-1 ring-[#c3a47b]/40;
   }
 
   .room-shell {
-    @apply relative flex h-dvh max-h-dvh flex-col overflow-hidden bg-zinc-950;
+    @apply relative flex h-dvh max-h-dvh flex-col overflow-hidden bg-[#FAF8F5] text-[#2D241E] dark:bg-[#141210] dark:text-[#f5ede3];
   }
 
   .type-meta {
-    @apply text-xs text-zinc-500;
+    @apply text-xs text-[#75695e];
   }
 
   .type-body {
-    @apply text-sm leading-relaxed text-zinc-300;
+    @apply text-sm leading-relaxed text-[#a89b8d];
   }
 }
 
@@ -152,15 +392,16 @@
 
   .scrollbar-quiet {
     scrollbar-width: thin;
-    scrollbar-color: hsl(240 4% 22%) transparent;
+    scrollbar-color: rgba(195, 164, 123, 0.28) transparent;
   }
 
   .scrollbar-quiet::-webkit-scrollbar {
     width: 5px;
+    height: 5px;
   }
 
   .scrollbar-quiet::-webkit-scrollbar-thumb {
-    background: hsl(240 4% 22%);
+    background: rgba(195, 164, 123, 0.28);
     border-radius: 999px;
   }
 }
@@ -272,11 +513,55 @@
   transform-origin: top center;
 }
 
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-12deg); }
+  40% { transform: rotate(12deg); }
+  60% { transform: rotate(-8deg); }
+  80% { transform: rotate(8deg); }
+}
+
+.animate-wiggle {
+  animation: wiggle 0.6s ease-in-out;
+  transform-origin: top center;
+}
+
 @keyframes shrinkProgress {
   from { width: 100%; }
   to { width: 0%; }
 }
 
+/* ==========================================================================
+   3D Flip Card System (React Bits Style)
+   ========================================================================== */
+.perspective-container {
+  perspective: 1200px;
+}
 
+.perspective-1000 {
+  perspective: 1000px;
+}
 
+.flip-card-inner {
+  transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+  will-change: transform;
+}
 
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.flipped {
+  transform: rotateY(180deg);
+}
+
+.card-front,
+.card-back {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.card-back {
+  transform: rotateY(180deg);
+}

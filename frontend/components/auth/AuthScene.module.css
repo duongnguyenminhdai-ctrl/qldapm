@@ -1,0 +1,311 @@
+/* ==========================================================================
+   DAY & NIGHT LANDSCAPE AUTH SCENE MODULE
+   ========================================================================== */
+
+.sceneCard {
+  position: relative;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: 44% 56%;
+  width: min(920px, 96vw);
+  min-height: 520px;
+  padding: 12px;
+  border-radius: 28px;
+  transition: background-color 700ms ease, border-color 700ms ease, box-shadow 700ms ease;
+  backdrop-filter: blur(28px) saturate(135%);
+  -webkit-backdrop-filter: blur(28px) saturate(135%);
+}
+
+/* Day Mode Card (Vintage Parchment Style) */
+.sceneCardDay {
+  background-color: rgba(250, 246, 238, 0.94);
+  border: 1px solid rgba(220, 205, 185, 0.85);
+  box-shadow: 0 24px 60px rgba(50, 35, 20, 0.12), 0 8px 24px rgba(50, 35, 20, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+/* Night Mode Card (Dark Academia Obsidian Style) */
+.sceneCardNight {
+  background-color: rgba(20, 17, 15, 0.92);
+  border: 1px solid rgba(58, 49, 40, 0.75);
+  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.65), 0 8px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* ==========================================================================
+   LEFT COLUMN - SCENE PANEL (Cột Trái - Phong Cảnh Thiên Nhiên Ngày / Đêm)
+   ========================================================================== */
+
+.scenePanel {
+  position: relative;
+  min-height: 480px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #16374b;
+  box-shadow: 0 8px 24px rgba(6, 35, 50, 0.15), inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  transition: border-color 1000ms ease, box-shadow 1000ms ease;
+}
+
+.scenePanelDay {
+  border: 1px solid rgba(255, 255, 255, 0.65);
+}
+
+.scenePanelNight {
+  border: 1px solid rgba(169, 207, 235, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 5, 14, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+/* Landscape background with Day/Night gradient transitions */
+.landscapeScene {
+  --celestial-drop: 270px;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 18% 20%, rgba(242, 255, 255, 0.75), transparent 55%),
+              linear-gradient(180deg, #88c7dc 0%, #c2e8e6 45%, #c5e1d9 72%, #8abdc9 100%);
+}
+
+.landscapeScene::before {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 82% 14%, rgba(61, 89, 130, 0.25), transparent 52%),
+              linear-gradient(180deg, #020711 0%, #091525 49%, #142638 74%, #06121f 100%);
+  content: "";
+  opacity: 0;
+  transition: opacity 1200ms ease;
+  pointer-events: none;
+}
+
+.landscapeSceneNight::before {
+  opacity: 1;
+}
+
+/* Glass glare layer */
+.landscapeScene::after {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  background: linear-gradient(
+    118deg,
+    transparent 9%,
+    rgba(255, 255, 255, 0.15) 10%,
+    rgba(255, 255, 255, 0.02) 34%,
+    transparent 35%,
+    transparent 69%,
+    rgba(255, 255, 255, 0.08) 70%,
+    transparent 88%
+  );
+  content: "";
+  pointer-events: none;
+}
+
+/* Sky Objects container clipped behind mountains */
+.skyObjects {
+  clip-path: polygon(0 0, 100% 0, 100% 34.2%, 87.75% 41.4%, 70.5% 30.2%, 57% 42.2%, 39% 26%, 22.75% 41.4%, 12.75% 34.6%, 0 47%);
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+}
+
+.sun,
+.moon {
+  position: absolute;
+  z-index: 1;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+}
+
+.sun {
+  top: 15%;
+  left: 23%;
+  border: 1px solid rgba(255, 254, 231, 0.88);
+  background: url("/image/flashlight-login/sun.svg") center / cover;
+  box-shadow: inset 2px 3px 8px rgba(255, 255, 255, 0.8),
+              inset -3px -5px 10px rgba(214, 147, 67, 0.25),
+              0 0 35px 12px rgba(255, 225, 148, 0.4);
+  transition: transform 1100ms cubic-bezier(0.4, 0, 0.2, 1) 250ms;
+}
+
+.sunDown {
+  transform: translate(26px, var(--celestial-drop, 270px));
+  transition-delay: 0ms;
+}
+
+.sunUp {
+  transform: translate(0, 0);
+}
+
+.moon {
+  top: 14%;
+  right: 19%;
+  border: 1px solid rgba(230, 251, 255, 0.84);
+  background: url("/image/flashlight-login/moon.svg") center / cover;
+  box-shadow: inset 2px 3px 7px rgba(255, 255, 255, 0.7),
+              inset -4px -5px 10px rgba(80, 122, 158, 0.28),
+              0 0 30px 8px rgba(198, 220, 248, 0.25);
+  transition: transform 1100ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.moonDown {
+  transform: translate(-24px, var(--celestial-drop, 270px));
+  transition-delay: 0ms;
+}
+
+.moonUp {
+  transform: translate(0, 0);
+  transition-delay: 300ms;
+}
+
+/* Mountains landscape art */
+.sceneLand {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 1200ms ease;
+  pointer-events: none;
+}
+
+/* Bottom vignette gradient for readable text */
+.sceneOverlayVignette {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  background: linear-gradient(transparent 36%, rgba(3, 20, 34, 0.2) 53%, rgba(3, 20, 34, 0.82) 100%);
+  pointer-events: none;
+}
+
+/* Text inside Scene Panel */
+.sceneCopy {
+  position: absolute;
+  z-index: 4;
+  bottom: 24px;
+  left: 0;
+  right: 0;
+  padding: 0 24px;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 2px 12px rgba(0, 10, 25, 0.35);
+}
+
+.sceneCopy h2 {
+  margin: 0 0 8px;
+  font-size: clamp(20px, 2.2vw, 24px);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.sceneCopy p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(240, 248, 255, 0.85);
+}
+
+/* ==========================================================================
+   RIGHT COLUMN - FORM PANEL (Cột Phải - Biểu Mẫu Nhập Liệu)
+   ========================================================================== */
+
+.formPanel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 32px clamp(20px, 3.5vw, 40px);
+  border-radius: 20px;
+  transition: background-color 700ms ease, color 700ms ease;
+}
+
+.formPanelDay {
+  background-color: rgba(255, 255, 255, 0.45);
+  color: #241c18;
+}
+
+.formPanelNight {
+  background-color: rgba(14, 12, 10, 0.45);
+  color: #f5ede3;
+}
+
+/* Day Mode Styling Overrides for Inputs & Form Typography */
+.sceneCardDay input:not([type="checkbox"]):not([type="radio"]) {
+  background-color: #faf6ee !important;
+  border-color: #d8cdbe !important;
+  color: #28201a !important;
+}
+
+.sceneCardDay input::placeholder {
+  color: #8c7e70 !important;
+}
+
+.sceneCardDay label {
+  color: #3e3228 !important;
+}
+
+.sceneCardDay .border-\[\#3a3128\] {
+  border-color: #dcd0bf !important;
+}
+
+.sceneCardDay .bg-\[\#201b18\] {
+  background-color: #faf6ee !important;
+}
+
+.sceneCardDay .text-\[\#75695e\] {
+  color: #7a6a5c !important;
+}
+
+.sceneCardDay .text-\[\#a89b8d\] {
+  color: #635345 !important;
+}
+
+.sceneCardDay .text-\[\#f5ede3\] {
+  color: #241c18 !important;
+}
+
+/* ==========================================================================
+   PAGE LANDSCAPE (FULLSCREEN BACKGROUND)
+   ========================================================================== */
+
+.pageLandscape {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+  .sceneCard {
+    grid-template-columns: 1fr;
+    width: min(480px, 100%);
+    min-height: auto;
+    padding: 8px;
+    border-radius: 20px;
+  }
+
+  .scenePanel {
+    min-height: 130px;
+    height: 130px;
+    border-radius: 16px;
+  }
+
+  .sceneCopy {
+    bottom: 10px;
+    padding: 0 12px;
+  }
+
+  .sceneCopy h2 {
+    font-size: 15px;
+    margin-bottom: 2px;
+  }
+
+  .sceneCopy p {
+    display: none;
+  }
+
+  .formPanel {
+    padding: 20px 14px 16px;
+    border-radius: 16px;
+  }
+}

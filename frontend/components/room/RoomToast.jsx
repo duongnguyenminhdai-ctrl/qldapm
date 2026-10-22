@@ -18,25 +18,25 @@ const ICONS = {
 };
 
 const COLORS = {
-  message: "border-zinc-700/60 bg-zinc-900/95",
-  leave: "border-zinc-700/60 bg-zinc-900/95",
-  host_closed: "border-amber-500/40 bg-amber-950/90",
-  hand: "border-amber-500/40 bg-zinc-900/95 shadow-lg shadow-amber-500/10",
-  success: "border-emerald-500/40 bg-zinc-900/95",
-  warning: "border-amber-500/40 bg-amber-950/90",
-  error: "border-rose-500/40 bg-zinc-900/95",
-  join_request: "border-amber-500/50 bg-zinc-950/95 shadow-xl shadow-amber-500/10",
+  message: "border-stone-200 bg-[#FAF8F5]/95 text-[#2D241E] dark:border-[#3a3128] dark:bg-[#1c1815]/95 dark:text-[#f5ede3]",
+  leave: "border-stone-200 bg-[#FAF8F5]/95 text-[#2D241E] dark:border-[#3a3128] dark:bg-[#1c1815]/95 dark:text-[#f5ede3]",
+  host_closed: "border-[#c3a47b]/40 bg-amber-50/95 text-[#2D241E] dark:bg-[#292019]/95 dark:text-[#f5ede3]",
+  hand: "border-[#c3a47b]/40 bg-[#FAF8F5]/95 text-[#2D241E] shadow-lg shadow-[#c3a47b]/10 dark:bg-[#1c1815]/95 dark:text-[#f5ede3]",
+  success: "border-emerald-500/40 bg-emerald-50/95 text-emerald-950 dark:border-[#c3a47b]/40 dark:bg-[#1c1815]/95 dark:text-[#f5ede3]",
+  warning: "border-amber-500/40 bg-amber-50/95 text-amber-950 dark:border-[#c3a47b]/40 dark:bg-[#292019]/95 dark:text-[#f5ede3]",
+  error: "border-rose-400/50 bg-rose-50/95 text-rose-950 dark:border-[#8b2626]/40 dark:bg-[#1c1815]/95 dark:text-[#f5ede3]",
+  join_request: "border-[#c3a47b]/50 bg-[#FAF8F5]/95 text-[#2D241E] shadow-xl shadow-[#c3a47b]/10 dark:bg-[#1c1815]/95 dark:text-[#f5ede3]",
 };
 
 const ICON_COLORS = {
-  message: "text-indigo-400",
-  leave: "text-zinc-400",
-  host_closed: "text-amber-400",
-  hand: "text-amber-400",
-  success: "text-emerald-400",
-  warning: "text-amber-400",
+  message: "text-[#c3a47b]",
+  leave: "text-[#a89b8d]",
+  host_closed: "text-[#c3a47b]",
+  hand: "text-[#e8cca4]",
+  success: "text-[#c3a47b]",
+  warning: "text-[#e8cca4]",
   error: "text-rose-400",
-  join_request: "text-amber-400",
+  join_request: "text-[#c3a47b]",
 };
 
 /**
@@ -81,13 +81,13 @@ function ToastItem({ id, type = "message", title, body, actionLabel, onAction, o
     >
       {/* Progress bar ở đáy */}
       <div
-        className="absolute bottom-0 left-0 h-[2px] rounded-b-2xl bg-white/10"
+        className="absolute bottom-0 left-0 h-[2px] rounded-b-2xl bg-[#3a3128]/60"
         style={{ width: "100%" }}
       >
         <div
           className={cn(
             "h-full rounded-b-2xl transition-none",
-            type === "host_closed" || type === "hand" ? "bg-amber-400/60" : "bg-indigo-400/50"
+            "bg-[#c3a47b]/70"
           )}
           style={{
             animation: `toast-shrink ${TOAST_DURATION}ms linear forwards`,
@@ -103,10 +103,10 @@ function ToastItem({ id, type = "message", title, body, actionLabel, onAction, o
       {/* Content */}
       <div className="min-w-0 flex-1">
         {title && (
-          <p className="truncate text-xs font-semibold text-zinc-100">{title}</p>
+          <p className="truncate text-xs font-serif font-semibold text-[#2D241E] dark:text-[#f5ede3]">{title}</p>
         )}
         {body && (
-          <p className="mt-0.5 line-clamp-2 text-xs text-zinc-400 leading-relaxed">
+          <p className="mt-0.5 line-clamp-2 text-xs text-[#615247] dark:text-[#a89b8d] leading-relaxed">
             {body}
           </p>
         )}
@@ -119,7 +119,7 @@ function ToastItem({ id, type = "message", title, body, actionLabel, onAction, o
                 onAction();
                 handleDismiss();
               }}
-              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-emerald-500 transition active:scale-95"
+              className="inline-flex items-center gap-1 rounded-lg bg-[#c3a47b] px-2.5 py-1 text-xs font-semibold text-[#161311] shadow-sm hover:bg-[#d6b88f] transition active:scale-95"
             >
               <Check className="h-3 w-3" strokeWidth={2} />
               <span>{actionLabel}</span>
@@ -132,7 +132,7 @@ function ToastItem({ id, type = "message", title, body, actionLabel, onAction, o
       <button
         type="button"
         onClick={handleDismiss}
-        className="mt-0.5 shrink-0 rounded p-0.5 text-zinc-500 transition hover:text-zinc-300"
+        className="mt-0.5 shrink-0 rounded p-0.5 text-stone-400 hover:text-[#2D241E] dark:text-[#75695e] dark:hover:text-[#f5ede3]"
         aria-label="Đóng thông báo"
       >
         <X className="h-3 w-3" />
@@ -184,12 +184,17 @@ export function useRoomToast() {
   }) => {
     const id = key || `toast_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     setToasts((prev) => {
-      // Giảm xuống duy nhất 1 thông báo cho yêu cầu vào phòng (join_request) thay vì xếp chồng
+      // 1. Chống lặp thông báo nếu đã có toast cùng key hoặc cùng title & body đang hiển thị
+      if (key && prev.some((t) => t.id === key)) {
+        return prev;
+      }
+      if (prev.some((t) => t.title === title && t.body === body)) {
+        return prev;
+      }
+
       let filtered = prev;
       if (type === "join_request") {
         filtered = filtered.filter((t) => t.type !== "join_request");
-      } else if (key) {
-        filtered = filtered.filter((t) => t.id !== key);
       }
       return [
         ...filtered.slice(-3),

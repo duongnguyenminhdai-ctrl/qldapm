@@ -6,6 +6,7 @@ const {
   getMessages,
   sendMessage,
   revokeMessage,
+  reactToMessage,
 } = require("../controllers/message.controller");
 const { protect } = require("../middlewares/authMiddleware");
 
@@ -20,5 +21,9 @@ router.get("/:conversationId", getMessages);
 router.post("/send", sendMessage);
 router.patch("/:id/revoke", revokeMessage);
 router.patch("/:id/recall", revokeMessage);
+router.delete("/poll/:id", revokeMessage);
+router.delete("/:id", revokeMessage);
+router.patch("/:id/react", reactToMessage);
+router.post("/:id/react", reactToMessage);
 
 module.exports = router;

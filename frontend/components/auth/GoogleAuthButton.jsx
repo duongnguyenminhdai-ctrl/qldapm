@@ -87,13 +87,13 @@ export function GoogleAuthButton({ callbackUrl = "/", onError }) {
         type="button"
         onClick={handleGoogleClick}
         disabled={loading}
-        className="w-full h-11 flex items-center justify-center gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900/90 hover:bg-zinc-800/80 hover:border-zinc-700 text-xs font-medium text-zinc-100 transition shadow-xs active:scale-[0.99] disabled:opacity-60 cursor-pointer"
+        className="w-full h-11 flex items-center justify-center gap-2.5 rounded-xl border border-[#3a3128] bg-[#141210] hover:bg-[#26201c] hover:border-[#5c4e40] text-xs font-medium text-[#f5ede3] transition shadow-xs active:scale-[0.99] disabled:opacity-60 cursor-pointer"
         title="Đăng nhập nhanh bằng tài khoản Google"
       >
         {loading ? (
           <>
-            <Loader2 className="h-4 w-4 animate-spin text-purple-400" />
-            <span className="text-zinc-300">Đang kết nối Google...</span>
+            <Loader2 className="h-4 w-4 animate-spin text-[#c3a47b]" />
+            <span className="text-[#a89b8d]">Đang kết nối Google...</span>
           </>
         ) : (
           <>

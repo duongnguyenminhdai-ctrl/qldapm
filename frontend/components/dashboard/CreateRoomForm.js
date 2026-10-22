@@ -27,14 +27,23 @@ export function CreateRoomForm({ onSuccess }) {
     setError("");
     startTransition(async () => {
       try {
+        const maxMembers = category === "chess" ? 2 : 20;
         const result = await roomsApi.create({
           title: trimmed,
           category,
           isPrivate,
           accessType,
+          maxMembers,
+          type: category === "chess" ? "chess" : "study",
         });
-        const roomCode = result?.data?.room?.roomCode;
+        const room = result?.data?.room;
+        const roomCode = room?.roomCode;
         if (!roomCode) throw new Error("Không nhận được mã phòng từ server.");
+        try {
+          if (typeof window !== "undefined") {
+            window.sessionStorage.setItem(`vsr_created_room_${roomCode}`, JSON.stringify(room));
+          }
+        } catch (_) {}
         if (onSuccess) onSuccess(roomCode);
         router.push(`/room/${roomCode}`);
       } catch (err) {
@@ -48,7 +57,7 @@ export function CreateRoomForm({ onSuccess }) {
       <div className="flex flex-col gap-2">
         <label
           htmlFor="room-title-input"
-          className="text-sm font-medium text-zinc-300"
+          className="text-sm font-medium text-[#d8c8b4]"
         >
           Tên phòng
         </label>
@@ -64,7 +73,7 @@ export function CreateRoomForm({ onSuccess }) {
           }}
           maxLength={100}
           autoComplete="off"
-          className="h-10 rounded-lg border border-zinc-800/60 bg-zinc-950 px-3 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-10 rounded-xl border border-[#3a3128] bg-[#141210] px-3 text-sm text-[#f5ede3] placeholder:text-[#75695e] focus:border-[#5c4e40] focus:outline-none focus:ring-1 focus:ring-[#c3a47b] disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isPending}
         />
         {error && (
@@ -78,7 +87,7 @@ export function CreateRoomForm({ onSuccess }) {
       <div className="flex flex-col gap-2">
         <label
           htmlFor="room-category-select"
-          className="text-sm font-medium text-zinc-300"
+          className="text-sm font-medium text-[#d8c8b4]"
         >
           Chủ đề học tập
         </label>
@@ -87,20 +96,26 @@ export function CreateRoomForm({ onSuccess }) {
           value={category}
           onChange={(e) => setCategory(e.target.value)}
           disabled={isPending}
-          className="h-10 rounded-lg border border-zinc-800/60 bg-zinc-950 px-3 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-10 rounded-xl border border-[#3a3128] bg-[#141210] px-3 text-sm text-[#f5ede3] focus:border-[#5c4e40] focus:outline-none focus:ring-1 focus:ring-[#c3a47b] disabled:cursor-not-allowed disabled:opacity-60"
         >
           <option value="general">Chung / Tự học</option>
+          <option value="chess">♟️ Cờ vua (1v1)</option>
           <option value="tech">Công nghệ & Lập trình</option>
           <option value="languages">Ngoại ngữ & IELTS</option>
           <option value="math">Toán & Khoa học</option>
           <option value="exam">Luyện thi & Chứng chỉ</option>
           <option value="chill">Góc học tập yên tĩnh</option>
         </select>
+        {category === "chess" && (
+          <p className="text-xs text-amber-500 font-medium">
+            ♟️ Chế độ Cờ vua 1v1: Giới hạn tối đa 2 người chơi đấu kháng trực tiếp.
+          </p>
+        )}
       </div>
 
       {/* Chọn chế độ Public / Private */}
       <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium text-zinc-300">
+        <label className="text-sm font-medium text-[#d8c8b4]">
           Chế độ phòng
         </label>
         <div className="grid grid-cols-2 gap-2">
@@ -109,10 +124,10 @@ export function CreateRoomForm({ onSuccess }) {
             onClick={() => setIsPrivate(false)}
             disabled={isPending}
             className={cn(
-              "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+              "flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors",
               !isPrivate
-                ? "border-zinc-300 bg-zinc-100 text-zinc-950 shadow-sm"
-                : "border-zinc-800/80 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                ? "border-[#c3a47b] bg-[#c3a47b] text-[#161311] font-semibold shadow-sm"
+                : "border-[#3a3128] bg-[#201b18] text-[#d8c8b4] hover:border-[#5c4e40] hover:text-[#f5ede3]"
             )}
           >
             <Globe className="h-4 w-4" strokeWidth={1.75} />
@@ -123,17 +138,17 @@ export function CreateRoomForm({ onSuccess }) {
             onClick={() => setIsPrivate(true)}
             disabled={isPending}
             className={cn(
-              "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+              "flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors",
               isPrivate
-                ? "border-zinc-300 bg-zinc-100 text-zinc-950 shadow-sm"
-                : "border-zinc-800/80 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                ? "border-[#c3a47b] bg-[#c3a47b] text-[#161311] font-semibold shadow-sm"
+                : "border-[#3a3128] bg-[#201b18] text-[#d8c8b4] hover:border-[#5c4e40] hover:text-[#f5ede3]"
             )}
           >
             <Lock className="h-4 w-4" strokeWidth={1.75} />
             <span>Riêng tư</span>
           </button>
         </div>
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-[#75695e]">
           {!isPrivate
             ? "Hiển thị trên danh sách phòng đang mở để ai cũng có thể vào."
             : "Chỉ người có mã hoặc link mới vào được."}
@@ -142,7 +157,7 @@ export function CreateRoomForm({ onSuccess }) {
 
       {/* Quyền truy cập phòng */}
       <div className="flex flex-col gap-2">
-        <label className="text-sm font-medium text-zinc-300">
+        <label className="text-sm font-medium text-[#d8c8b4]">
           Quyền truy cập phòng
         </label>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -153,15 +168,15 @@ export function CreateRoomForm({ onSuccess }) {
             className={cn(
               "flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all",
               accessType === "OPEN"
-                ? "border-emerald-500/50 bg-emerald-950/20 text-zinc-100 ring-1 ring-emerald-500/40"
-                : "border-zinc-800/80 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                ? "border-[#c3a47b]/60 bg-[#29231f] text-[#f5ede3] ring-1 ring-[#c3a47b]/40"
+                : "border-[#3a3128] bg-[#201b18] text-[#a89b8d] hover:border-[#5c4e40] hover:text-[#f5ede3]"
             )}
           >
             <div className="flex items-center gap-1.5 font-medium text-xs sm:text-sm">
-              <Users className={cn("h-4 w-4", accessType === "OPEN" ? "text-emerald-400" : "text-zinc-500")} />
+              <Users className={cn("h-4 w-4", accessType === "OPEN" ? "text-[#c3a47b]" : "text-[#75695e]")} />
               <span>Mở tự do</span>
             </div>
-            <span className="text-[11px] leading-tight text-zinc-500">
+            <span className="text-[11px] leading-tight text-[#75695e]">
               Bất kỳ ai có link hoặc mã phòng vào thẳng phòng học.
             </span>
           </button>
@@ -173,22 +188,22 @@ export function CreateRoomForm({ onSuccess }) {
             className={cn(
               "flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all",
               accessType === "APPROVAL_REQUIRED"
-                ? "border-amber-500/50 bg-amber-950/20 text-zinc-100 ring-1 ring-amber-500/40"
-                : "border-zinc-800/80 bg-zinc-950/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                ? "border-[#c3a47b]/60 bg-[#29231f] text-[#f5ede3] ring-1 ring-[#c3a47b]/40"
+                : "border-[#3a3128] bg-[#201b18] text-[#a89b8d] hover:border-[#5c4e40] hover:text-[#f5ede3]"
             )}
           >
             <div className="flex items-center gap-1.5 font-medium text-xs sm:text-sm">
-              <ShieldCheck className={cn("h-4 w-4", accessType === "APPROVAL_REQUIRED" ? "text-amber-400" : "text-zinc-500")} />
+              <ShieldCheck className={cn("h-4 w-4", accessType === "APPROVAL_REQUIRED" ? "text-[#c3a47b]" : "text-[#75695e]")} />
               <span>Cần xét duyệt</span>
             </div>
-            <span className="text-[11px] leading-tight text-zinc-500">
+            <span className="text-[11px] leading-tight text-[#75695e]">
               Phòng chờ: Chủ phòng phải phê duyệt mới được vào.
             </span>
           </button>
         </div>
       </div>
 
-      <Button type="submit" className="w-full" disabled={isPending}>
+      <Button type="submit" className="w-full bg-[#c3a47b] text-[#161311] hover:bg-[#d6b88f] font-semibold" disabled={isPending}>
         {isPending ? "Đang tạo..." : "Tạo phòng"}
       </Button>
     </form>

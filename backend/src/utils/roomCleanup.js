@@ -96,8 +96,55 @@ async function cleanupOrphanedRoomFiles() {
   }
 }
 
+/**
+ * Quét và dọn sạch toàn bộ các phòng tồn đọng / mồ côi khi server khởi động (Server Startup Cleanup):
+ * - Những phòng có participants rỗng ([] hoặc null hoặc size 0)
+ * - Những phòng có status: 'closed' hoặc isActive: false
+ * Giúp server không bao giờ bị dính phòng "ma" sau khi crash hoặc restart dev server.
+ */
+async function cleanupStaleRoomsOnStartup() {
+  try {
+    const staleFilter = {
+      $or: [
+        { "participants.0": { $exists: false } },
+        { participants: { $size: 0 } },
+        { participants: null },
+        { status: "closed" },
+        { isActive: false },
+      ],
+    };
+
+    const staleRooms = await Room.find(staleFilter).select("roomCode title");
+    const staleCodes = staleRooms.map((r) => (r.roomCode || "").toUpperCase()).filter(Boolean);
+
+    if (staleCodes.length > 0) {
+      console.log(
+        `[StartupCleanup] 🧹 Phát hiện ${staleCodes.length} phòng mồ côi/0 người tồn đọng từ phiên trước:`,
+        staleCodes
+      );
+
+      for (const code of staleCodes) {
+        await cleanupRoomFiles(code).catch(() => {});
+      }
+
+      const deleteResult = await Room.deleteMany(staleFilter);
+      console.log(
+        `[StartupCleanup] ✅ Đã xóa vĩnh viễn ${deleteResult.deletedCount} phòng tồn đọng khỏi MongoDB.`
+      );
+    } else {
+      console.log(`[StartupCleanup] ✅ Không có phòng mồ côi tồn đọng từ phiên trước.`);
+    }
+
+    // Tiếp tục dọn dẹp các tệp tin mồ côi còn sót
+    await cleanupOrphanedRoomFiles();
+  } catch (err) {
+    console.error("[StartupCleanup] ❌ Lỗi dọn phòng khi server khởi động:", err.message);
+  }
+}
+
 module.exports = {
   cleanupRoomFiles,
   cleanupOrphanedRoomFiles,
+  cleanupStaleRoomsOnStartup,
   extractCloudinaryInfo,
 };

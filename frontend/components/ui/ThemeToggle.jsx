@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { Sun, Moon } from "lucide-react";
-import { ICON_STROKE } from "@/lib/constants";
+import RubberSegment from "./RubberSegment";
 
-export function ThemeToggle({ className = "" }) {
+export function ThemeToggle({ className = "", size = "sm" }) {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -13,41 +13,59 @@ export function ThemeToggle({ className = "" }) {
     setMounted(true);
   }, []);
 
+  const currentTheme = resolvedTheme || theme || "dark";
+  const isDark = currentTheme === "dark";
+
+  // Ngăn hydration mismatch trong khi Next.js khởi tạo client
   if (!mounted) {
     return (
       <div
-        className={`h-9 w-9 rounded-xl border border-zinc-200/80 bg-zinc-100/50 dark:border-zinc-800/80 dark:bg-zinc-900/60 ${className}`}
+        className={`h-7 w-[124px] rounded-xl border border-[#c3a47b]/20 bg-[#201b18]/60 animate-pulse ${className}`}
         aria-hidden="true"
       />
     );
   }
 
-  const isDark = resolvedTheme === "dark";
-
-  const toggleTheme = () => {
-    setTheme(isDark ? "light" : "dark");
-  };
+  const items = [
+    {
+      value: "dark",
+      label: "Tối",
+      icon: <Moon className="h-3 w-3 shrink-0" strokeWidth={2} />,
+    },
+    {
+      value: "light",
+      label: "Sáng",
+      icon: <Sun className="h-3 w-3 shrink-0" strokeWidth={2} />,
+    },
+  ];
 
   return (
-    <button
-      type="button"
-      onClick={toggleTheme}
-      id="theme-toggle-btn"
-      aria-label={isDark ? "Chuyển sang giao diện sáng" : "Chuyển sang giao diện tối"}
-      title={isDark ? "Giao diện sáng" : "Giao diện tối"}
-      className={`group relative flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200/80 bg-white/80 text-zinc-600 shadow-sm backdrop-blur-md transition duration-taste ease-taste hover:border-zinc-300 hover:bg-zinc-100/80 hover:text-zinc-900 active:scale-[0.98] dark:border-zinc-800/80 dark:bg-zinc-900/60 dark:text-zinc-400 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/80 dark:hover:text-zinc-100 ${className}`}
+    <div
+      className={`inline-flex items-center rounded-xl p-0.5 border border-[#c3a47b]/25 shadow-xs backdrop-blur-md transition-colors duration-300 ${
+        isDark ? "bg-[#181513]/90" : "bg-[#f5f0e8]/90"
+      } ${className}`}
+      title={isDark ? "Chuyển sang giao diện Giấy cổ Sáng" : "Chuyển sang giao diện Thư viện Tối"}
     >
-      {isDark ? (
-        <Sun
-          className="h-4 w-4 transition-transform duration-taste ease-taste group-hover:rotate-45 text-amber-400"
-          strokeWidth={ICON_STROKE || 1.5}
-        />
-      ) : (
-        <Moon
-          className="h-4 w-4 transition-transform duration-taste ease-taste group-hover:-rotate-12 text-zinc-700"
-          strokeWidth={ICON_STROKE || 1.5}
-        />
-      )}
-    </button>
+      <RubberSegment
+        items={items}
+        value={isDark ? "dark" : "light"}
+        onChange={(val) => setTheme(val)}
+        size={size}
+        radius={10}
+        inset={2}
+        equalSlots={true}
+        speed={1.2}
+        stretch={75}
+        squash={3}
+        trackColor={isDark ? "rgba(28, 23, 20, 0.9)" : "rgba(233, 224, 212, 0.9)"}
+        thumbColor={isDark ? "#c3a47b" : "#b3894e"}
+        textColor={isDark ? "#a89b8d" : "#7c6f64"}
+        activeTextColor={isDark ? "#141210" : "#faf8f5"}
+        className="!text-xs font-medium"
+        aria-label="Chuyển đổi giao diện Dark / Light"
+      />
+    </div>
   );
 }
+
+export default ThemeToggle;

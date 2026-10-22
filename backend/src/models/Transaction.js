@@ -22,7 +22,7 @@ const transactionSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["PENDING", "SUCCESS", "FAILED"],
+    enum: ["PENDING", "SUCCESS", "FAILED", "EXPIRED", "CANCELLED"],
     default: "PENDING",
   },
   vnpayTransactionNo: {

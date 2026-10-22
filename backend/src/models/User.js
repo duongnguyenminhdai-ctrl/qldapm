@@ -35,6 +35,23 @@ const userSchema = new mongoose.Schema(
       default: "ACTIVE",
       index: true,
     },
+    isBanned: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    banReason: {
+      type: String,
+      default: "",
+    },
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+    },
+    lockUntil: {
+      type: Date,
+      default: null,
+    },
     isVerified: {
       type: Boolean,
       default: false,
@@ -118,6 +135,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "Nhập môn học giả",
     },
+    activeTitle: {
+      type: String,
+      default: "Nhập môn học giả",
+    },
     unlockedTitleIds: {
       type: [String],
       default: ["nhap-mon-hoc-gia", "thieu-uy"],
@@ -125,6 +146,10 @@ const userSchema = new mongoose.Schema(
     streak: {
       type: Number,
       default: 1,
+    },
+    lastActiveDate: {
+      type: String,
+      default: null,
     },
     totalStudySeconds: {
       type: Number,
@@ -142,20 +167,46 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    dailyStudyMinutes: {
+      type: Number,
+      default: 0,
+    },
+    dailyStudyDate: {
+      type: String,
+      default: null,
+    },
+    lastCardRewardDate: {
+      type: String,
+      default: null,
+    },
+    cardDraws: {
+      type: Number,
+      default: 0,
+    },
+    cardInventory: [
+      {
+        cardId: { type: Number, required: true }, // 1 đến 7
+        count: { type: Number, default: 0 },
+      },
+    ],
   },
   {
     timestamps: true,
   }
 );
 
-userSchema.pre("save", async function (next) {
+userSchema.pre("save", async function () {
   if (!this.isModified("password")) {
-    return next();
+    return;
+  }
+
+  // Nếu mật khẩu đã được băm bằng bcrypt rồi thì không băm lại
+  if (typeof this.password === "string" && /^\$2[aby]\$\d{2}\$[./0-9A-Za-z]{53}$/.test(this.password)) {
+    return;
   }
 
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
-  next();
 });
 
 userSchema.methods.matchPassword = async function (enteredPassword) {

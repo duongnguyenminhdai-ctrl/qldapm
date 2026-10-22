@@ -35,16 +35,27 @@ const ALLOWED_EXTENSIONS = [
   ".py",
   ".cpp",
   ".java",
+  ".webm",
+  ".mp3",
+  ".wav",
+  ".ogg",
+  ".m4a",
+  ".aac",
+  ".flac",
 ];
 
 const fileFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
-  if (ALLOWED_EXTENSIONS.includes(ext) || file.mimetype.startsWith("image/")) {
+  if (
+    ALLOWED_EXTENSIONS.includes(ext) ||
+    file.mimetype.startsWith("image/") ||
+    file.mimetype.startsWith("audio/")
+  ) {
     cb(null, true);
   } else {
     cb(
       new Error(
-        `Định dạng file không được hỗ trợ (${ext}). Cho phép: ảnh, pdf, docx, txt, zip, code.`
+        `Định dạng file không được hỗ trợ (${ext}). Cho phép: ảnh, âm thanh, pdf, docx, txt, zip, code.`
       ),
       false
     );
@@ -66,8 +77,12 @@ const upload = multer({
  */
 const uploadBufferToCloudinary = (buffer, originalname, mimetype) => {
   return new Promise((resolve, reject) => {
-    const isImage = mimetype.startsWith("image/");
     const ext = path.extname(originalname).toLowerCase();
+    // SVG chứa XML có thể nhúng script, do đó không xử lý như image thông thường mà lưu dạng raw attachment
+    const isImage = mimetype.startsWith("image/") && ext !== ".svg";
+    const isAudio =
+      mimetype.startsWith("audio/") ||
+      [".webm", ".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac"].includes(ext);
 
     // Làm sạch tên file không dấu/ký tự đặc biệt cho public_id
     const baseName = path
@@ -77,17 +92,19 @@ const uploadBufferToCloudinary = (buffer, originalname, mimetype) => {
 
     const publicId = `${Date.now()}_${baseName}`;
 
-    // Cloudinary options
+    // Cloudinary options: Audio trong Cloudinary được lưu dưới resource_type: "video" (hoặc "auto")
+    const resourceType = isImage ? "image" : isAudio ? "video" : "raw";
+
     const options = {
       folder: "virtual_study_room",
       public_id: publicId,
-      resource_type: isImage ? "image" : "raw",
+      resource_type: resourceType,
       use_filename: true,
       unique_filename: true,
     };
 
     // Với raw file (PDF, docx,...), thêm extension vào public_id để khi tải về giữ đúng đuôi file
-    if (!isImage) {
+    if (!isImage && !isAudio) {
       options.public_id = `${publicId}${ext}`;
     }
 
@@ -101,11 +118,11 @@ const uploadBufferToCloudinary = (buffer, originalname, mimetype) => {
         resolve({
           fileUrl: result.secure_url,
           fileName: originalname,
-          fileType: isImage ? "image" : ext.replace(".", "") || "document",
+          fileType: isImage ? "image" : isAudio ? "audio" : ext.replace(".", "") || "document",
           fileSize: result.bytes || buffer.length,
           format: result.format || ext.replace(".", ""),
           publicId: result.public_id,
-          resourceType: result.resource_type || (isImage ? "image" : "raw"),
+          resourceType: result.resource_type || resourceType,
         });
       }
     );
