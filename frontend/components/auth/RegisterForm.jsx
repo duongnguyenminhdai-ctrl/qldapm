@@ -28,6 +28,7 @@ export function RegisterForm({ onSwitchToLogin, onSwitchToForgot } = {}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPasswords, setShowPasswords] = useState(false);
   const [otp, setOtp] = useState("");
 
   const [fieldErrors, setFieldErrors] = useState({});
@@ -225,7 +226,7 @@ export function RegisterForm({ onSwitchToLogin, onSwitchToForgot } = {}) {
             />
           </div>
 
-          {/* Ô Mật khẩu: Đèn pin cố định, hiển thị trọn vẹn khi hover/focus */}
+          {/* Ô Mật khẩu: Chứa chiếc đèn pin DUY NHẤT */}
           <FlashlightPasswordField
             id="password"
             name="password"
@@ -233,6 +234,8 @@ export function RegisterForm({ onSwitchToLogin, onSwitchToForgot } = {}) {
             placeholder="Tối thiểu 6 ký tự"
             autoComplete="new-password"
             value={password}
+            revealed={showPasswords}
+            onToggleReveal={() => setShowPasswords((prev) => !prev)}
             onChange={(e) => {
               setPassword(e.target.value);
               clearFieldError("password");
@@ -240,7 +243,7 @@ export function RegisterForm({ onSwitchToLogin, onSwitchToForgot } = {}) {
             error={fieldErrors.password}
           />
 
-          {/* Ô Xác nhận mật khẩu: Đồng bộ hoàn toàn cùng component và style */}
+          {/* Ô Xác nhận mật khẩu: Không gắn đèn pin thứ 2, đồng bộ rọi sáng theo đèn ở ô Mật khẩu */}
           <FlashlightPasswordField
             id="confirmPassword"
             name="confirmPassword"
@@ -248,6 +251,8 @@ export function RegisterForm({ onSwitchToLogin, onSwitchToForgot } = {}) {
             placeholder="Nhập lại mật khẩu"
             autoComplete="new-password"
             value={confirmPassword}
+            revealed={showPasswords}
+            showTorch={false}
             onChange={(e) => {
               setConfirmPassword(e.target.value);
               clearFieldError("confirmPassword");

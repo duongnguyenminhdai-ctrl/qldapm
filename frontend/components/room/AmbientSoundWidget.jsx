@@ -297,9 +297,21 @@ export function AmbientSoundWidget({ className }) {
   // Bật/tắt 1 âm thanh
   const handleToggleTrack = useCallback((trackId) => {
     setHasInteracted(true);
+    const audio = audioRefs.current[trackId];
     setSoundState((prev) => {
       const current = prev.tracks[trackId] || { active: false, volume: 50 };
       const nextActive = !current.active;
+
+      // Trực tiếp phát/dừng audio trong sự kiện click của user để tuân thủ Autoplay Policy
+      if (audio) {
+        if (nextActive) {
+          const effectiveVolume = (current.volume / 100) * (prev.masterVolume / 100);
+          audio.volume = Math.max(0, Math.min(1, effectiveVolume));
+          audio.play().catch((err) => console.debug("[AmbientSound] Play error:", err?.message));
+        } else {
+          audio.pause();
+        }
+      }
 
       // Nếu đang Mute All mà user bật track mới, tự động mở Mute để nghe được
       return {
@@ -319,8 +331,15 @@ export function AmbientSoundWidget({ className }) {
   // Thay đổi âm lượng 1 track
   const handleChangeTrackVolume = useCallback((trackId, newVol) => {
     setHasInteracted(true);
+    const audio = audioRefs.current[trackId];
     setSoundState((prev) => {
       const current = prev.tracks[trackId] || { active: false, volume: 50 };
+      if (audio && current.active && !prev.isMutedAll) {
+        audio.volume = Math.max(0, Math.min(1, (newVol / 100) * (prev.masterVolume / 100)));
+        if (audio.paused) {
+          audio.play().catch(() => {});
+        }
+      }
       return {
         ...prev,
         tracks: {

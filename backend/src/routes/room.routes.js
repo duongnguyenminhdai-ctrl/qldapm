@@ -5,6 +5,7 @@ const {
   leaveRoom,
   getRoomByCode,
   getRooms,
+  updateRoomSettings,
 } = require("../controllers/room.controller");
 const { protect } = require("../middlewares/authMiddleware");
 
@@ -15,6 +16,9 @@ router.get("/", getRooms);
 
 // Tạo phòng mới (yêu cầu đăng nhập)
 router.post("/create", protect, createRoom);
+
+// Cập nhật cấu hình phòng (sức chứa maxMembers lên đến 60 người cho VIP, quyền truy cập)
+router.patch("/:roomCode/settings", protect, updateRoomSettings);
 
 // Tham gia phòng bằng mã (yêu cầu đăng nhập)
 router.post("/join", protect, joinRoom);

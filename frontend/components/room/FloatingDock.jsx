@@ -94,6 +94,8 @@ export function FloatingDock({
     if (onSendReaction) {
       onSendReaction(emoji);
     }
+    // Tự động đóng popover emoji sau khi chọn
+    setReactionMenuOpen(false);
     // Chống spam: Giới hạn tần suất 0.5s giữa mỗi lần thả reaction
     setCooldown(true);
     setTimeout(() => setCooldown(false), 500);
@@ -108,7 +110,7 @@ export function FloatingDock({
         )}
       >
         <nav
-          className="pointer-events-auto flex items-center justify-around sm:justify-center gap-1 sm:gap-1.5 w-full sm:w-auto max-w-full overflow-x-auto scrollbar-quiet rounded-t-2xl sm:rounded-full border-t border-x-0 sm:border border-stone-300/80 bg-[#FAF8F5]/95 dark:border-[#3a3128] dark:bg-[#1e1916]/95 backdrop-blur-md px-2.5 sm:px-3 py-2 sm:py-1.5 shadow-2xl"
+          className="pointer-events-auto relative flex items-center justify-around sm:justify-center gap-1 sm:gap-1.5 w-full sm:w-auto max-w-full overflow-visible rounded-t-2xl sm:rounded-full border-t border-x-0 sm:border border-stone-300/80 bg-[#FAF8F5]/95 dark:border-[#3a3128] dark:bg-[#1e1916]/95 backdrop-blur-md px-2.5 sm:px-3 py-2 sm:py-1.5 shadow-2xl"
           aria-label="Công cụ phòng học"
         >
           <DockButton

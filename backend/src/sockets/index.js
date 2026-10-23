@@ -15,6 +15,7 @@ const { cleanupRoomFiles, extractCloudinaryInfo } = require("../utils/roomCleanu
 const cloudinary = require("../config/cloudinary");
 const { createAndSendNotification, sendNotificationToMultiple } = require("../services/notification.service");
 const { calculateStreakUpdate, getVietnamDateString } = require("../utils/streakHelper");
+const { transcribeAudioWithGemini } = require("../services/aiTutor.service");
 
 // Quản lý trạng thái realtime trong bộ nhớ (Pomodoro + Lịch sử tin nhắn gần nhất)
 const roomStates = new Map();
@@ -1499,6 +1500,12 @@ const initSocket = (io) => {
         // Đồng bộ danh sách thông báo của phiên phòng học
         socket.emit("room:notifications-sync", roomState.notifications || []);
 
+        // Đồng bộ trạng thái có ai trong phòng đang bật chép lời hay không
+        const hasActiveTranscription = (roomState.transcriptionListeners?.size || 0) > 0;
+        socket.emit("room:transcription-status-changed", {
+          hasActiveListener: hasActiveTranscription,
+        });
+
         console.log(
           `[Socket] User [${user?.name || userId || socket.id}] da gia nhap phong ${normalizedCode}`
         );
@@ -1908,11 +1915,13 @@ const initSocket = (io) => {
       }
       socket.lastReactionAt = now;
 
-      // Broadcast reaction cho mọi người trong phòng
-      io.to(roomCode).emit("room:receive-reaction", {
+      // Broadcast reaction cho mọi người trong phòng TRỪ người gửi
+      // (client người gửi đã tự triggerReaction "Bạn" tức thì ở frontend)
+      socket.to(roomCode).emit("room:receive-reaction", {
         emoji,
         senderName,
         reactionId: `rx_${now}_${Math.random().toString(36).slice(2, 7)}`,
+        senderSocketId: socket.id,
       });
     });
 
@@ -2322,16 +2331,16 @@ const initSocket = (io) => {
 
     /**
      * Sự kiện: room:transcript-segment
-     * Nhận đoạn chép lời từ client và lưu RIÊNG BIỆT cho user đó
+     * Nhận đoạn chép lời từ client và broadcast tới tất cả thành viên trong phòng (cho người bật chép lời)
      */
-    socket.on("room:transcript-segment", ({ roomCode, text, speakerName, userId }) => {
+    socket.on("room:transcript-segment", ({ roomCode, text, speakerName, userId, id }) => {
       try {
         if (!roomCode || !text || !text.trim()) return;
         const normalizedCode = (roomCode || "").trim().toUpperCase();
         const targetUserId = String(
           userId || socket.userId || socket.userData?.id || socket.userData?._id || ""
         );
-        if (!targetUserId) return;
+        const resolvedSpeakerName = speakerName || socket.userData?.name || "Thành viên";
 
         const state = getOrCreateRoomState(normalizedCode);
         if (!state.userTranscripts.has(targetUserId)) {
@@ -2341,17 +2350,125 @@ const initSocket = (io) => {
         const timeStr = new Date().toLocaleTimeString("vi-VN", {
           hour: "2-digit",
           minute: "2-digit",
-          second: "2-digit",
         });
 
-        state.userTranscripts.get(targetUserId).push({
+        const segment = {
+          id: id || `ts_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          roomCode: normalizedCode,
           text: text.trim(),
-          speakerName: speakerName || socket.userData?.name || "Bạn",
+          speakerName: resolvedSpeakerName,
+          speakerId: targetUserId,
+          userId: targetUserId,
           time: timeStr,
           createdAt: new Date(),
-        });
+        };
+
+        state.userTranscripts.get(targetUserId).push(segment);
+
+        // Broadcast đoạn chép lời cho toàn bộ phòng để người bật chép lời nhận được (cả bản thân lẫn người khác nói)
+        io.to(normalizedCode).emit("room:receive-transcript", segment);
       } catch (err) {
         console.warn("[Socket] Lỗi nhận room:transcript-segment:", err.message);
+      }
+    });
+
+    /**
+     * Sự kiện: room:transcript-interim
+     * Broadcast đoạn thoại đang nói dở (interim text) để hiển thị nhấp nháy thời gian thực
+     */
+    socket.on("room:transcript-interim", ({ roomCode, text, speakerName, userId }) => {
+      try {
+        if (!roomCode) return;
+        const normalizedCode = (roomCode || "").trim().toUpperCase();
+        const targetUserId = String(
+          userId || socket.userId || socket.userData?.id || socket.userData?._id || ""
+        );
+        const resolvedSpeakerName = speakerName || socket.userData?.name || "Thành viên";
+
+        socket.to(normalizedCode).emit("room:receive-transcript-interim", {
+          roomCode: normalizedCode,
+          speakerId: targetUserId,
+          userId: targetUserId,
+          speakerName: resolvedSpeakerName,
+          text: (text || "").trim(),
+        });
+      } catch (_) {}
+    });
+
+    /**
+     * Sự kiện: room:speech-audio-chunk
+     * Nhận đoạn âm thanh từ client và chép lời bằng Google Gemini Flash Multimodal AI
+     */
+    socket.on("room:speech-audio-chunk", async ({ roomCode, audioBase64, mimeType, speakerName, userId, id }) => {
+      try {
+        if (!roomCode || !audioBase64) return;
+        const normalizedCode = (roomCode || "").trim().toUpperCase();
+        const targetUserId = String(
+          userId || socket.userId || socket.userData?.id || socket.userData?._id || ""
+        );
+        const resolvedSpeakerName = speakerName || socket.userData?.name || "Thành viên";
+
+        const text = await transcribeAudioWithGemini({
+          audioBase64,
+          mimeType: mimeType || "audio/webm",
+          roomSubject: normalizedCode,
+        });
+
+        if (text && text.trim() && !text.includes("[EMPTY]")) {
+          const timeStr = new Date().toLocaleTimeString("vi-VN", {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+
+          const segment = {
+            id: id || `gm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            roomCode: normalizedCode,
+            text: text.trim(),
+            speakerName: resolvedSpeakerName,
+            speakerId: targetUserId,
+            userId: targetUserId,
+            time: timeStr,
+            aiPowered: true,
+            createdAt: new Date(),
+          };
+
+          const state = getOrCreateRoomState(normalizedCode);
+          if (!state.userTranscripts.has(targetUserId)) {
+            state.userTranscripts.set(targetUserId, []);
+          }
+          state.userTranscripts.get(targetUserId).push(segment);
+
+          // Broadcast đoạn chép lời chuẩn xác từ Gemini cho toàn bộ phòng
+          io.to(normalizedCode).emit("room:receive-transcript", segment);
+        }
+      } catch (err) {
+        console.warn("[Socket] Lỗi xử lý room:speech-audio-chunk với Gemini:", err.message);
+      }
+    });
+
+    /**
+     * Sự kiện: room:transcription-toggle
+     * Bật/tắt trạng thái có người đang theo dõi chép lời trong phòng
+     */
+    socket.on("room:transcription-toggle", ({ roomCode, isEnabled }) => {
+      try {
+        const normalizedCode = (roomCode || "").trim().toUpperCase();
+        if (!normalizedCode) return;
+        const state = getOrCreateRoomState(normalizedCode);
+        if (!state.transcriptionListeners) {
+          state.transcriptionListeners = new Set();
+        }
+        if (isEnabled) {
+          state.transcriptionListeners.add(socket.id);
+        } else {
+          state.transcriptionListeners.delete(socket.id);
+        }
+        const hasActiveListener = state.transcriptionListeners.size > 0;
+        io.to(normalizedCode).emit("room:transcription-status-changed", {
+          hasActiveListener,
+        });
+      } catch (err) {
+        console.warn("[Socket] Lỗi room:transcription-toggle:", err.message);
       }
     });
 
@@ -4293,6 +4410,19 @@ const initSocket = (io) => {
             userId: targetUId,
             userName,
             isHandRaised: false,
+          });
+        }
+      }
+
+      // Hủy đăng ký listener chép lời nếu socket này đang bật chép lời
+      if (roomCode) {
+        const normalizedCode = roomCode.trim().toUpperCase();
+        const state = roomStates.get(normalizedCode);
+        if (state?.transcriptionListeners?.has(socket.id)) {
+          state.transcriptionListeners.delete(socket.id);
+          const hasActiveListener = state.transcriptionListeners.size > 0;
+          io.to(normalizedCode).emit("room:transcription-status-changed", {
+            hasActiveListener,
           });
         }
       }

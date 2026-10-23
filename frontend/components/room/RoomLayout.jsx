@@ -37,6 +37,7 @@ import { getStoredUser, getAuthToken, livekitApi, uploadApi } from "@/lib/api";
 import PricingModal from "@/components/payment/PricingModal";
 import TitlesModal from "@/components/titles/TitlesModal";
 import { TranscriptionOverlay } from "@/components/room/TranscriptionOverlay";
+import { LiveKitSpeechBridge } from "@/components/room/LiveKitSpeechBridge";
 import { FloatingReactions, useFloatingReactions } from "@/components/room/FloatingReactions";
 import { RoomNotificationBell } from "@/components/room/RoomNotificationBell";
 import { RoomQRCodeModal } from "@/components/room/RoomQRCodeModal";
@@ -372,6 +373,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [permissionError, setPermissionError] = useState("");
   const [transcriptionOn, setTranscriptionOn] = useState(false);
+  const [roomHasActiveTranscription, setRoomHasActiveTranscription] = useState(false);
   const [isSessionEnded, setIsSessionEnded] = useState(false);
   const [aloneCountdown, setAloneCountdown] = useState(null); // { remainingSeconds, expiresAt }
   const transcriptionOnRef = useRef(transcriptionOn);
@@ -510,6 +512,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
           roomCode,
           emoji,
           senderName,
+          senderSocketId: socket.id,
         });
       }
       // Kích hoạt ngay trên client mình để tạo cảm giác phản hồi mượt mà zero-latency
@@ -521,6 +524,32 @@ export default function RoomLayout({ roomCode, initialRoom }) {
   const handlePermissionError = useCallback((msg) => {
     setPermissionError(msg);
   }, []);
+
+  // Bật/tắt chép lời trực tiếp (đồng bộ cho cả phòng biết có người đang bật chép lời)
+  const handleToggleTranscription = useCallback(() => {
+    setTranscriptionOn((prev) => {
+      const next = !prev;
+      const socket = socketRef.current;
+      if (socket && socket.connected) {
+        socket.emit("room:transcription-toggle", {
+          roomCode,
+          isEnabled: next,
+        });
+      }
+      return next;
+    });
+  }, [roomCode]);
+
+  const handleCloseTranscription = useCallback(() => {
+    setTranscriptionOn(false);
+    const socket = socketRef.current;
+    if (socket && socket.connected) {
+      socket.emit("room:transcription-toggle", {
+        roomCode,
+        isEnabled: false,
+      });
+    }
+  }, [roomCode]);
 
   const handleToggleAITutor = useCallback(() => {
     if (panelOpen && panelTab === "ai") {
@@ -840,8 +869,16 @@ export default function RoomLayout({ roomCode, initialRoom }) {
 
     // Nhận cảm xúc nổi realtime từ các thành viên trong phòng
     socket.off("room:receive-reaction");
-    socket.on("room:receive-reaction", ({ emoji, senderName }) => {
+    socket.on("room:receive-reaction", ({ emoji, senderName, senderSocketId }) => {
+      // Bỏ qua nếu tin phản ứng đến từ chính mình (đã kích hoạt local "Bạn")
+      if (senderSocketId && socket.id && senderSocketId === socket.id) return;
       triggerReaction({ emoji, senderName });
+    });
+
+    // Lắng nghe trạng thái có người đang theo dõi chép lời trong phòng
+    socket.off("room:transcription-status-changed");
+    socket.on("room:transcription-status-changed", ({ hasActiveListener }) => {
+      setRoomHasActiveTranscription(Boolean(hasActiveListener));
     });
 
     // Cập nhật trạng thái hiển thị danh hiệu realtime
@@ -1309,6 +1346,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       socket.off("room:file-deleted");
       socket.off("room:hand-updated");
       socket.off("room:receive-reaction");
+      socket.off("room:transcription-status-changed");
       socket.off("pomodoro:sync");
       socket.off("connect", emitJoin);
       socket.off("room:user-title-visibility");
@@ -1859,6 +1897,15 @@ export default function RoomLayout({ roomCode, initialRoom }) {
           forceMuteActionRef.current = fn;
         }}
       />
+      {/* LiveKitSpeechBridge — Cầu nối nhận diện giọng nói khi mic bật và phát sóng cho người bật chép lời */}
+      <LiveKitSpeechBridge
+        roomCode={roomCode}
+        currentUser={currentUser}
+        currentUserId={currentUserId}
+        socket={socketRef.current}
+        transcriptionOn={transcriptionOn}
+        roomHasActiveTranscription={roomHasActiveTranscription}
+      />
 
       {/* Header phòng */}
       <header className="relative z-[30] flex shrink-0 items-center justify-between gap-3 border-b border-stone-200 bg-[#FAF8F5]/90 dark:border-[#3a3128] dark:bg-[#181513]/90 backdrop-blur-sm px-4 py-3 sm:px-6">
@@ -2129,7 +2176,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
         onToggleScreenState={setScreenSharing}
         onPermissionError={handlePermissionError}
         transcriptionOn={transcriptionOn}
-        onToggleTranscription={() => setTranscriptionOn((v) => !v)}
+        onToggleTranscription={handleToggleTranscription}
         isPro={isPro}
         onUpgradeClick={() => setIsPricingOpen(true)}
         isHandRaised={isHandRaised}
@@ -2205,7 +2252,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
         userId={currentUserId}
         socket={socketRef.current}
         isSessionEnded={isSessionEnded}
-        onClose={() => setTranscriptionOn(false)}
+        onClose={handleCloseTranscription}
       />
 
       {/* Banner thông báo kết thúc phiên họp khi người dùng đang giữ bảng chép lời */}

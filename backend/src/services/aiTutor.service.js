@@ -1,12 +1,15 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// Danh sách các model tốc độ cao theo thứ tự ưu tiên (ưu tiên model ổn định không bị 503)
+// Danh sách các model tốc độ cao theo thứ tự ưu tiên (ưu tiên model quota cao, phản hồi nhanh và ổn định)
 const CANDIDATE_MODELS = [
-  "gemini-3-flash-preview",
-  "gemini-3.6-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-flash-lite-latest",
   "gemini-3.5-flash",
-  "gemma-4-26b-a4b-it",
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
   "gemini-3.8-flash",
+  "gemini-3-flash-preview",
 ];
 
 const CONTEXT_INSTRUCTIONS = {
@@ -158,7 +161,120 @@ Quy tắc phản hồi:
   );
 }
 
+/**
+ * Chép lời âm thanh tiếng Việt bằng mô hình đa phương thức Google Gemini Flash
+ * @param {Object} params
+ * @param {string} params.audioBase64 - Chuỗi base64 của dữ liệu audio (WebM, WAV, MP3...)
+ * @param {string} [params.mimeType='audio/webm'] - Định dạng MIME của âm thanh
+ * @param {string} [params.roomSubject=''] - Chủ đề phòng học để mớm ngữ cảnh chuyên ngành
+ * @returns {Promise<string>}
+ */
+async function transcribeAudioWithGemini({
+  audioBase64,
+  mimeType = "audio/webm",
+  roomSubject = "",
+}) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || !audioBase64) return "";
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const cleanMime = (mimeType || "audio/webm").split(";")[0].trim();
+
+  const promptText = `Bạn là hệ thống AI nhận diện giọng nói tiếng Việt độ chính xác cao.
+Chủ đề cuộc trò chuyện/phòng học: "${roomSubject || "Học tập & Thảo luận"}".
+Nhiệm vụ:
+1. Hãy nghe kỹ đoạn âm thanh này và chép lại trung thực, chính xác từng từ bằng tiếng Việt chuẩn ngữ pháp, có dấu câu (chấm, phẩy, hỏi, than) hợp lý.
+2. Nếu người nói dùng thuật ngữ kỹ thuật, tên riêng hoặc từ mượn tiếng Anh (ví dụ: React, Node.js, API, Component, Bug, Code, Socket, Database, Next.js, Function...), hãy viết đúng chuẩn từ tiếng Anh đó.
+3. Nếu âm thanh chỉ là khoảng lặng (silence), tiếng thở, tiếng gõ bàn phím hoặc tạp âm không chứa tiếng người nói, hãy trả về đúng từ: [EMPTY].
+4. CHỈ TRẢ VỀ văn bản đã chép lời, TUYỆT ĐỐI KHÔNG thêm lời giải thích, không thêm định dạng thừa.`;
+
+  for (const modelName of CANDIDATE_MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 1024,
+        },
+      });
+
+      const result = await model.generateContent([
+        {
+          inlineData: {
+            mimeType: cleanMime,
+            data: audioBase64,
+          },
+        },
+        { text: promptText },
+      ]);
+
+      const text = result?.response?.text()?.trim() || "";
+      if (text.includes("[EMPTY]") || !text) {
+        return "";
+      }
+      return text;
+    } catch (err) {
+      console.warn(
+        `[GeminiAudio] Model [${modelName}] lỗi chép lời:`,
+        err.message?.slice(0, 100)
+      );
+    }
+  }
+
+  return "";
+}
+
+/**
+ * Tóm tắt toàn bộ biên bản chép lời phòng học bằng Gemini
+ * @param {Object} params
+ * @param {string} params.transcriptText - Toàn bộ nội dung hội thoại
+ * @param {string} [params.roomSubject=''] - Tên hoặc chủ đề phòng
+ * @returns {Promise<string>}
+ */
+async function summarizeTranscriptWithGemini({
+  transcriptText,
+  roomSubject = "",
+}) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || !transcriptText || !transcriptText.trim()) {
+    throw new Error("Không có nội dung biên bản để tóm tắt.");
+  }
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const prompt = `Bạn là Thư ký học tập thông minh trong nền tảng Virtual Study Room.
+Dưới đây là toàn bộ bản ghi âm chép lời của phòng học "${roomSubject || "Phòng học ảo"}":
+
+--- BẮT ĐẦU BIÊN BẢN ---
+${transcriptText.slice(0, 12000)}
+--- KẾT THÚC BIÊN BẢN ---
+
+Hãy tổng hợp thành một báo cáo tóm tắt học tập súc tích, chuyên nghiệp bằng Markdown theo cấu trúc sau:
+## 🎯 Chủ đề & Mục tiêu thảo luận
+## 📌 Tóm tắt nội dung cốt lõi (Bullet points rõ ràng)
+## 💡 Các câu hỏi / Vấn đề đã được giải đáp
+## 🚀 Bài tập & Kế hoạch hành động tiếp theo (Action Items)`;
+
+  for (const modelName of CANDIDATE_MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      const summaryText = result?.response?.text()?.trim();
+      if (summaryText) return summaryText;
+    } catch (err) {
+      console.warn(
+        `[GeminiSummarize] Model [${modelName}] lỗi:`,
+        err.message?.slice(0, 100)
+      );
+    }
+  }
+
+  throw new Error("Không thể kết nối với Gemini để tóm tắt buổi học.");
+}
+
 module.exports = {
   generateTutorResponse,
+  transcribeAudioWithGemini,
+  summarizeTranscriptWithGemini,
   CONTEXT_INSTRUCTIONS,
+  CANDIDATE_MODELS,
 };

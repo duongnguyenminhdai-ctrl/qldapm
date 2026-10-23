@@ -7,23 +7,13 @@ import {
   Trash2,
   Bot,
   User,
-  Lightbulb,
-  Code2,
-  FileText,
-  Languages,
-  HelpCircle,
   Loader2,
   AlertCircle,
   RotateCcw,
   Crown,
-  Lock,
-  CheckCircle2,
-  Zap,
-  ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { aiApi } from "@/lib/api";
-import { Button } from "@/components/ui/button";
 import { MarkdownContent } from "./MarkdownContent";
 
 // Quản lý các request AI đang chạy ngầm độc lập với vòng đời component
@@ -40,7 +30,6 @@ export function StudyAITutorPanel({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [isProRequiredError, setIsProRequiredError] = useState(false);
 
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
@@ -86,9 +75,6 @@ export function StudyAITutorPanel({
         if (e.detail?.error) {
           setError(e.detail.error);
         }
-        if (e.detail?.isProRequired) {
-          setIsProRequiredError(true);
-        }
       }
     };
 
@@ -101,7 +87,7 @@ export function StudyAITutorPanel({
     };
   }, [syncFromStorage, roomCode]);
 
-  // Cuộn xuống tin nhắn mới nhất
+  // Tự động cuộn xuống tin nhắn mới nhất
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({
@@ -128,7 +114,7 @@ export function StudyAITutorPanel({
     } catch (_) {}
   };
 
-  // Gửi câu hỏi cho AI Tutor (Chạy ngầm độc lập với việc đóng/mở panel)
+  // Gửi câu hỏi cho AI Tutor
   const handleSendMessage = async (textToSend) => {
     const text = (textToSend || input).trim();
     if (!text || loading) return;
@@ -143,7 +129,6 @@ export function StudyAITutorPanel({
       timestamp: new Date().toISOString(),
     };
 
-    // Lấy lịch sử mới nhất từ sessionStorage để tránh mất dữ liệu
     let current = [];
     try {
       const saved = sessionStorage.getItem(storageKey);
@@ -167,7 +152,7 @@ export function StudyAITutorPanel({
       content: m.content,
     }));
 
-    // Gọi API bất đồng bộ độc lập: dù click ra ngoài hoặc unmount panel thì tiến trình vẫn hoàn tất và lưu vào storage
+    // Gọi API Gemini Tutor
     aiApi
       .askTutor({
         message: text,
@@ -214,9 +199,6 @@ export function StudyAITutorPanel({
         sessionStorage.removeItem(pendingKey);
         activeAiRequests.delete(roomKey);
 
-        const isProReq =
-          err?.response?.data?.isProRequired ||
-          err?.response?.status === 403;
         const errMsg =
           err?.response?.data?.message ||
           err?.message ||
@@ -224,7 +206,7 @@ export function StudyAITutorPanel({
 
         window.dispatchEvent(
           new CustomEvent("vsr:ai-reply-error", {
-            detail: { roomCode, error: errMsg, isProRequired: isProReq },
+            detail: { roomCode, error: errMsg },
           })
         );
       });
@@ -237,172 +219,35 @@ export function StudyAITutorPanel({
     }
   };
 
-  // GIAO DIỆN KHÓA VIP (Dành cho thành viên chưa nâng cấp gói Pro)
-  if (!isPro) {
-    return (
-      <div
-        className={cn(
-          "flex h-full flex-col bg-[#FAF8F5]/98 text-[#2D241E] dark:bg-zinc-950/90 dark:text-zinc-100 backdrop-blur-sm",
-          className
-        )}
-      >
-        {/* Header thông báo đặc quyền */}
-        <div className="flex shrink-0 items-center justify-between border-b border-stone-200 dark:border-zinc-800/80 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500/20 to-yellow-500/20 border border-amber-500/30 text-amber-500 dark:text-amber-400 shadow-sm">
-              <Crown className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-semibold tracking-tight text-[#2D241E] dark:text-zinc-100">
-                  Study AI Tutor
-                </span>
-                <span className="rounded-full bg-amber-500/15 px-1.5 py-0.2 text-[9px] font-bold text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                  VIP ONLY
-                </span>
-              </div>
-              <p className="text-[10px] text-[#8C7E72] dark:text-zinc-400">
-                {roomSubject ? `Chủ đề: ${roomSubject}` : "Trợ lý học tập thông minh"}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Thân giao diện giới thiệu tính năng VIP */}
-        <div className="flex-1 overflow-y-auto px-5 py-6 scrollbar-quiet">
-          <div className="mx-auto flex max-w-sm flex-col items-center text-center">
-            {/* Crown Icon Glow Badge */}
-            <div className="relative mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-tr from-amber-500/20 via-amber-400/20 to-yellow-500/10 border border-amber-500/40 text-amber-500 dark:text-amber-400 shadow-[0_0_30px_rgba(245,158,11,0.25)]">
-              <Crown className="h-8 w-8 fill-amber-400/20" />
-              <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-violet-600 border border-zinc-900 text-[10px] text-white shadow-xs">
-                <Sparkles className="h-3 w-3" />
-              </span>
-            </div>
-
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-300 border border-amber-500/20">
-              Đặc quyền thành viên VIP
-            </span>
-
-            <h3 className="mt-2.5 text-base font-bold tracking-tight text-[#2D241E] dark:text-zinc-100">
-              Trợ lý Học tập AI Gemini Flash
-            </h3>
-
-            <p className="mt-1.5 text-xs leading-relaxed text-[#615247] dark:text-zinc-400">
-              Người bạn đồng hành 24/7 trực tiếp trong phòng học, hỗ trợ giải đáp bài tập, rà soát lỗi code và củng cố kiến thức theo thời gian thực.
-            </p>
-
-            {/* Danh sách 4 đặc quyền nổi bật */}
-            <div className="mt-5 w-full space-y-2.5 text-left">
-              <div className="flex items-start gap-3 rounded-xl border border-stone-200 bg-[#ECE5DA]/60 dark:border-zinc-800/80 dark:bg-zinc-900/60 p-3 transition hover:border-violet-500/30">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-500 dark:text-violet-400 border border-violet-500/20">
-                  <Lightbulb className="h-4 w-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-semibold text-[#2D241E] dark:text-zinc-200">
-                    Giải đáp bài tập & Khái niệm
-                  </h4>
-                  <p className="text-[11px] leading-tight text-[#615247] dark:text-zinc-400 mt-0.5">
-                    Phân tích đa chiều, giải thích dễ hiểu theo ngữ cảnh môn học.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 rounded-xl border border-stone-200 bg-[#ECE5DA]/60 dark:border-zinc-800/80 dark:bg-zinc-900/60 p-3 transition hover:border-violet-500/30">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500 dark:text-sky-400 border border-sky-500/20">
-                  <Code2 className="h-4 w-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-semibold text-[#2D241E] dark:text-zinc-200">
-                    Phát hiện & Sửa lỗi Code
-                  </h4>
-                  <p className="text-[11px] leading-tight text-[#615247] dark:text-zinc-400 mt-0.5">
-                    Hỗ trợ đa ngôn ngữ (JS, Python, C++...), tô màu cú pháp chuẩn.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 rounded-xl border border-stone-200 bg-[#ECE5DA]/60 dark:border-zinc-800/80 dark:bg-zinc-900/60 p-3 transition hover:border-violet-500/30">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                  <FileText className="h-4 w-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-semibold text-[#2D241E] dark:text-zinc-200">
-                    Tóm tắt bài học & Tạo ghi chú
-                  </h4>
-                  <p className="text-[11px] leading-tight text-[#615247] dark:text-zinc-400 mt-0.5">
-                    Đúc kết luận điểm cốt lõi thành bullet points ngắn gọn dễ nhớ.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 rounded-xl border border-stone-200 bg-[#ECE5DA]/60 dark:border-zinc-800/80 dark:bg-zinc-900/60 p-3 transition hover:border-violet-500/30">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                  <HelpCircle className="h-4 w-4" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-semibold text-[#2D241E] dark:text-zinc-200">
-                    Bộ câu hỏi trắc nghiệm phản xạ
-                  </h4>
-                  <p className="text-[11px] leading-tight text-[#615247] dark:text-zinc-400 mt-0.5">
-                    Tự sinh 3 câu hỏi trắc nghiệm kèm giải thích để tự kiểm tra.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Khối CTA nâng cấp */}
-            <div className="mt-6 w-full rounded-2xl border border-amber-500/30 bg-gradient-to-b from-amber-500/15 to-amber-500/5 p-4 shadow-inner">
-              <div className="flex items-center justify-between text-xs font-medium text-[#2D241E] dark:text-zinc-300">
-                <span>Gói thành viên VIP (Pro)</span>
-                <span className="font-bold text-amber-600 dark:text-amber-300">Từ 49.000đ / tháng</span>
-              </div>
-              <p className="mt-1 text-[11px] text-[#615247] dark:text-zinc-400 text-left">
-                Mở khóa không giới hạn AI Tutor, Chép lời tự động (Live Transcription) và huy hiệu VIP độc quyền.
-              </p>
-
-              <Button
-                type="button"
-                onClick={onUpgradeClick}
-                className="mt-3.5 w-full h-10 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-zinc-950 font-bold shadow-lg shadow-amber-500/20 text-xs flex items-center justify-center gap-1.5 transition-all"
-              >
-                <Crown className="h-4 w-4 fill-zinc-950" />
-                <span>Nâng cấp VIP ngay</span>
-                <ArrowRight className="h-3.5 w-3.5 ml-0.5" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
       className={cn(
-        "flex h-full flex-col bg-[#FAF8F5]/98 text-[#2D241E] dark:bg-zinc-950/90 dark:text-zinc-100 backdrop-blur-sm",
+        "flex flex-col h-full min-h-0 bg-[#141210] text-[#f5ede3] select-none overflow-hidden",
         className
       )}
     >
-      {/* Header thanh công cụ AI */}
-      <div className="flex shrink-0 items-center justify-between border-b border-stone-200 dark:border-zinc-800/80 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500/20 to-indigo-500/20 border border-violet-500/30 text-violet-500 dark:text-violet-400 shadow-sm">
+      {/* Header thanh công cụ AI Tutor */}
+      <div className="flex shrink-0 items-center justify-between border-b border-amber-900/30 bg-[#161311] px-4 py-2.5">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500/20 to-yellow-500/10 border border-amber-500/40 text-amber-400 shadow-sm">
             <Sparkles className="h-4 w-4" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="text-xs font-semibold tracking-tight text-[#2D241E] dark:text-zinc-100">
+              <span className="text-xs font-semibold text-[#f5ede3]">
                 Study AI Tutor
               </span>
-              <span className="rounded-full bg-violet-500/10 px-1.5 py-0.2 text-[9px] font-medium text-violet-600 dark:text-violet-400 border border-violet-500/20">
+              <span className="rounded-full bg-amber-500/15 px-1.5 py-0.2 text-[9px] font-medium text-amber-300 border border-amber-500/20">
                 Gemini
               </span>
-              <span className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.2 text-[9px] font-bold text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                <Crown className="h-2.5 w-2.5 fill-amber-500" />
-                <span>VIP</span>
-              </span>
+              {isPro && (
+                <span className="flex items-center gap-0.5 rounded-full bg-amber-500/20 px-1.5 py-0.2 text-[9px] font-bold text-amber-300 border border-amber-500/40">
+                  <Crown className="h-2.5 w-2.5 fill-amber-400" />
+                  <span>VIP</span>
+                </span>
+              )}
             </div>
-            <p className="text-[10px] text-[#8C7E72] dark:text-zinc-400">
+            <p className="text-[10px] text-[#8C7E72]">
               {roomSubject ? `Chủ đề: ${roomSubject}` : "Trợ lý học tập thông minh"}
             </p>
           </div>
@@ -412,7 +257,7 @@ export function StudyAITutorPanel({
           <button
             type="button"
             onClick={handleClearHistory}
-            className="flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-[#8C7E72] dark:text-zinc-400 transition hover:bg-[#ECE5DA] hover:text-rose-500 dark:hover:bg-zinc-800/80 dark:hover:text-rose-400"
+            className="flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-[#8C7E72] hover:bg-stone-800/80 hover:text-rose-400 transition cursor-pointer"
             title="Xóa toàn bộ lịch sử trò chuyện"
           >
             <Trash2 className="h-3 w-3" />
@@ -421,24 +266,24 @@ export function StudyAITutorPanel({
         )}
       </div>
 
-      {/* Danh sách tin nhắn */}
+      {/* VÙNG LỊCH SỬ CHAT: flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-3 */}
       <div
         ref={scrollRef}
-        className="flex-1 space-y-4 overflow-y-auto px-4 py-4 scrollbar-quiet"
+        className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-3 scrollbar-quiet"
       >
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center py-8 text-center px-2">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-violet-500/20 bg-violet-500/10 text-violet-500 dark:text-violet-400 shadow-inner">
-              <Bot className="h-6 w-6" strokeWidth={1.5} />
+          <div className="flex flex-col items-center justify-center py-4 text-center px-2 my-auto">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-amber-500/20 bg-amber-500/10 text-amber-400 shadow-inner">
+              <Bot className="h-5 w-5" strokeWidth={1.5} />
             </div>
-            <h4 className="mt-3 text-sm font-semibold text-[#2D241E] dark:text-zinc-100">
-              Trò chuyện cùng Gemini AI
+            <h4 className="mt-2 text-xs font-semibold text-[#f5ede3]">
+              Trò chuyện cùng Study AI Tutor
             </h4>
-            <p className="mt-1 max-w-[280px] text-xs leading-relaxed text-[#615247] dark:text-zinc-400">
-              Trợ lý học tập thông minh luôn sẵn sàng giải đáp thắc mắc, phân tích mã nguồn và tóm tắt kiến thức.
+            <p className="mt-1 max-w-[280px] text-[11px] leading-relaxed text-[#a89b8d]">
+              Trợ lý học tập luôn sẵn sàng giải đáp thắc mắc, phân tích tài liệu và tóm tắt kiến thức.
             </p>
 
-            <div className="mt-5 grid w-full max-w-xs grid-cols-1 gap-2">
+            <div className="mt-3 grid w-full max-w-xs grid-cols-1 gap-1.5">
               <button
                 type="button"
                 onClick={() =>
@@ -446,7 +291,7 @@ export function StudyAITutorPanel({
                     `Hãy gợi ý cho tôi 3 phương pháp ghi nhớ kiến thức hiệu quả nhất trong môn học này.`
                   )
                 }
-                className="rounded-xl border border-stone-200 bg-[#ECE5DA]/60 dark:border-zinc-800/80 dark:bg-zinc-900/60 p-2.5 text-left text-xs text-[#2D241E] dark:text-zinc-300 transition hover:border-[#b3894e]/50 hover:bg-[#ECE5DA] dark:hover:border-violet-500/40 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
+                className="rounded-xl border border-stone-800 bg-[#1c1815] p-2 text-left text-xs text-[#d8c8b4] hover:border-amber-500/40 hover:bg-[#25201c] hover:text-[#f5ede3] transition cursor-pointer"
               >
                 💡 Gợi ý 3 phương pháp ghi nhớ hiệu quả
               </button>
@@ -457,7 +302,7 @@ export function StudyAITutorPanel({
                     `Tạo 3 câu hỏi trắc nghiệm ôn tập nhanh về chủ đề: ${roomSubject || "Tổng quan"}`
                   )
                 }
-                className="rounded-xl border border-stone-200 bg-[#ECE5DA]/60 dark:border-zinc-800/80 dark:bg-zinc-900/60 p-2.5 text-left text-xs text-[#2D241E] dark:text-zinc-300 transition hover:border-[#b3894e]/50 hover:bg-[#ECE5DA] dark:hover:border-violet-500/40 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
+                className="rounded-xl border border-stone-800 bg-[#1c1815] p-2 text-left text-xs text-[#d8c8b4] hover:border-amber-500/40 hover:bg-[#25201c] hover:text-[#f5ede3] transition cursor-pointer"
               >
                 ❓ Tạo 3 câu hỏi trắc nghiệm ôn tập
               </button>
@@ -465,12 +310,12 @@ export function StudyAITutorPanel({
                 type="button"
                 onClick={() =>
                   handleSendMessage(
-                    `Hãy hướng dẫn các bước phân tích và gỡ lỗi (debug) một đoạn code hiệu quả.`
+                    `Hãy hướng dẫn các bước phân tích và giải quyết bài tập hiệu quả.`
                   )
                 }
-                className="rounded-xl border border-stone-200 bg-[#ECE5DA]/60 dark:border-zinc-800/80 dark:bg-zinc-900/60 p-2.5 text-left text-xs text-[#2D241E] dark:text-zinc-300 transition hover:border-[#b3894e]/50 hover:bg-[#ECE5DA] dark:hover:border-violet-500/40 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
+                className="rounded-xl border border-stone-800 bg-[#1c1815] p-2 text-left text-xs text-[#d8c8b4] hover:border-amber-500/40 hover:bg-[#25201c] hover:text-[#f5ede3] transition cursor-pointer"
               >
-                💻 Cách phân tích và gỡ lỗi code hiệu quả
+                📝 Các bước giải bài tập hiệu quả
               </button>
             </div>
           </div>
@@ -486,7 +331,7 @@ export function StudyAITutorPanel({
                 )}
               >
                 {!isUser && (
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-500 dark:text-violet-400 mt-0.5">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 mt-0.5">
                     <Sparkles className="h-3 w-3" />
                   </div>
                 )}
@@ -495,8 +340,8 @@ export function StudyAITutorPanel({
                   className={cn(
                     "max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-xs transition-all",
                     isUser
-                      ? "rounded-br-xs bg-violet-600 text-white selection:bg-violet-800"
-                      : "rounded-bl-xs border border-stone-200 bg-[#ECE5DA]/80 text-[#2D241E] dark:border-zinc-800/80 dark:bg-zinc-900/80 dark:text-zinc-200"
+                      ? "rounded-br-xs bg-gradient-to-r from-amber-600 to-amber-700 text-[#fff7df]"
+                      : "rounded-bl-xs border border-stone-800 bg-[#1c1815] text-[#f5ede3]"
                   )}
                 >
                   {isUser ? (
@@ -510,7 +355,7 @@ export function StudyAITutorPanel({
                   <div
                     className={cn(
                       "mt-1.5 flex items-center gap-1.5 text-[9px]",
-                      isUser ? "text-violet-200/80 justify-end" : "text-[#8C7E72] dark:text-zinc-500"
+                      isUser ? "text-amber-200/80 justify-end" : "text-[#8C7E72]"
                     )}
                   >
                     <span>
@@ -529,7 +374,7 @@ export function StudyAITutorPanel({
                 </div>
 
                 {isUser && (
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-stone-300 bg-[#ECE5DA] text-[#615247] dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400 mt-0.5">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-stone-700 bg-stone-800 text-[#d8c8b4] mt-0.5">
                     <User className="h-3 w-3" />
                   </div>
                 )}
@@ -538,21 +383,21 @@ export function StudyAITutorPanel({
           })
         )}
 
-        {/* Hiệu ứng suy nghĩ (Typing indicator) */}
+        {/* Hiệu ứng AI đang suy nghĩ */}
         {loading && (
           <div className="flex items-start gap-2.5 animate-in fade-in duration-200">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-500 dark:text-violet-400 mt-0.5">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 mt-0.5">
               <Sparkles className="h-3 w-3 animate-pulse" />
             </div>
-            <div className="rounded-2xl rounded-bl-xs border border-stone-200 bg-[#ECE5DA]/80 dark:border-zinc-800/80 dark:bg-zinc-900/80 px-3.5 py-3 shadow-xs">
+            <div className="rounded-2xl rounded-bl-xs border border-amber-900/40 bg-[#1c1815] px-3.5 py-2.5 shadow-xs">
               <div className="flex items-center gap-2">
                 <span className="flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce [animation-delay:-0.3s]" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce [animation-delay:-0.15s]" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-bounce" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce [animation-delay:-0.3s]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce [animation-delay:-0.15s]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-bounce" />
                 </span>
-                <span className="text-[11px] font-medium text-[#8C7E72] dark:text-zinc-400">
-                  Study AI Tutor đang giải đáp...
+                <span className="text-[11px] font-medium text-amber-200/90">
+                  Study AI Tutor đang suy nghĩ...
                 </span>
               </div>
             </div>
@@ -561,93 +406,66 @@ export function StudyAITutorPanel({
 
         {/* Thông báo lỗi nếu có */}
         {error && (
-          <div
-            className={cn(
-              "rounded-xl border p-3 text-xs",
-              isProRequiredError
-                ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-200"
-                : "border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-300"
-            )}
-          >
+          <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-3 text-xs text-rose-300">
             <div className="flex items-start gap-2">
-              {isProRequiredError ? (
-                <Crown className="h-4 w-4 shrink-0 text-amber-500 dark:text-amber-400 mt-0.5" />
-              ) : (
-                <AlertCircle className="h-4 w-4 shrink-0 text-rose-500 dark:text-rose-400 mt-0.5" />
-              )}
+              <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
               <div className="flex-1">
                 <span>{error}</span>
-                {isProRequiredError && onUpgradeClick && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={onUpgradeClick}
-                    className="mt-2 h-7 bg-gradient-to-r from-amber-500 to-amber-600 text-zinc-950 font-bold text-[11px] px-3 hover:brightness-110"
-                  >
-                    Nâng cấp lại gói VIP
-                  </Button>
-                )}
               </div>
-              {!isProRequiredError && (
-                <button
-                  type="button"
-                  onClick={() => handleSendMessage()}
-                  className="shrink-0 flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium bg-rose-500/20 text-rose-700 dark:text-rose-200 hover:bg-rose-500/30 transition"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  <span>Thử lại</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => handleSendMessage()}
+                className="shrink-0 flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 transition cursor-pointer"
+              >
+                <RotateCcw className="h-3 w-3" />
+                <span>Thử lại</span>
+              </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Khung nhập tin nhắn */}
-      <div className="shrink-0 border-t border-stone-200 bg-[#F7F4EB] dark:border-zinc-800/80 dark:bg-zinc-950/90 p-3">
+      {/* BỔ SUNG KHỐI NHẬP LIỆU Ở ĐÁY: p-3 border-t border-amber-900/30 bg-[#161311] */}
+      <div className="shrink-0 p-3 border-t border-amber-900/30 bg-[#161311]">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSendMessage();
           }}
-          className="relative flex flex-col gap-2 rounded-xl border border-stone-300 bg-[#FAF8F5] dark:border-zinc-800/90 dark:bg-zinc-900/70 p-2 focus-within:border-violet-500/60 focus-within:ring-1 focus-within:ring-violet-500/30 transition-all"
+          className="relative flex items-center gap-2 rounded-xl border border-amber-900/40 bg-[#1c1815] p-2 focus-within:border-amber-400 focus-within:ring-1 focus-within:ring-amber-400/40 transition-all"
         >
           <textarea
             ref={textareaRef}
-            rows={2}
+            rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Hỏi Gemini bất cứ điều gì về bài học, bài tập, code..."
+            placeholder="Hỏi Study AI Tutor bất kỳ điều gì... (Nhấn Enter để gửi)"
             disabled={loading}
-            className="w-full resize-none bg-transparent px-1.5 py-1 text-xs leading-relaxed text-[#2D241E] dark:text-zinc-100 placeholder:text-[#8C7E72] dark:placeholder:text-zinc-500 focus:outline-none disabled:opacity-50"
+            className="flex-1 resize-none bg-transparent px-2 py-1 text-xs leading-relaxed text-[#f5ede3] placeholder:text-[#8C7E72] focus:outline-none disabled:opacity-50 max-h-24 scrollbar-quiet"
           />
 
-          <div className="flex items-center justify-between pt-1 border-t border-stone-200 dark:border-zinc-800/50">
-            <span className="text-[10px] text-[#8C7E72] dark:text-zinc-500">
-              Nhấn <kbd className="rounded border border-stone-300 bg-[#ECE5DA] px-1 py-0.2 font-mono text-[9px] text-[#615247] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">Enter</kbd> để gửi, <kbd className="rounded border border-stone-300 bg-[#ECE5DA] px-1 py-0.2 font-mono text-[9px] text-[#615247] dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">Shift+Enter</kbd> xuống dòng
-            </span>
-
-            <button
-              type="submit"
-              disabled={loading || !input.trim()}
-              className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-lg transition-all",
-                input.trim() && !loading
-                  ? "bg-violet-600 text-white shadow-sm hover:bg-violet-500 active:scale-95"
-                  : "bg-stone-200 text-stone-400 dark:bg-zinc-800 dark:text-zinc-600 cursor-not-allowed"
-              )}
-              title="Gửi câu hỏi"
-            >
-              {loading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Send className="h-3.5 w-3.5" />
-              )}
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={loading || !input.trim()}
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-medium transition-all",
+              input.trim() && !loading
+                ? "bg-amber-500 text-stone-950 hover:bg-amber-400 active:scale-95 shadow-md shadow-amber-500/20 cursor-pointer"
+                : "bg-stone-800 text-stone-500 cursor-not-allowed"
+            )}
+            title="Gửi câu hỏi"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-stone-950" />
+            ) : (
+              <Send className="h-4 w-4 text-stone-950 fill-stone-950" />
+            )}
+          </button>
         </form>
       </div>
     </div>
   );
 }
+
+export default StudyAITutorPanel;

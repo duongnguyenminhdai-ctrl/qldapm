@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Danh sách emoji phản ứng nhanh cho phòng học
+ * Danh sách emoji phản ứng nhanh cho phòng học: ❤️, 👍, 👏, 🎉, 🔥, 💡
  */
-export const REACTION_EMOJIS = ["❤️", "👏", "🔥", "🎉", "💡", "☕"];
+export const REACTION_EMOJIS = ["❤️", "👍", "👏", "🎉", "🔥", "💡"];
 
 /**
  * Component hiển thị các emoji phản ứng bay lượn trên màn hình

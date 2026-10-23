@@ -566,6 +566,7 @@ export function RoomSidePanel({
       <Sheet open={open} onOpenChange={onOpenChange} modal={false}>
         <SheetContent
           side="right"
+          className="flex flex-col h-full overflow-hidden p-0 gap-0 border-l border-stone-200 dark:border-[#3a3128] bg-[#FAF8F5] dark:bg-[#1c1815] text-[#2D241E] dark:text-[#f5ede3] shadow-2xl sm:max-w-md w-full"
           onPointerDownOutside={(e) => {
             // Không preventDefault nếu đang mở modal bình chọn hoặc click vào popup/dialog
             if (pollModalOpen || e.target?.closest?.("[role='dialog']") || e.target?.closest?.(".fixed")) {
@@ -574,13 +575,13 @@ export function RoomSidePanel({
             e.preventDefault();
           }}
         >
-          <SheetHeader className="border-b border-stone-200 dark:border-[#2d2620] pb-4 px-5 pt-5">
+          <SheetHeader className="shrink-0 border-b border-stone-200 dark:border-[#2d2620] pb-3 px-5 pt-4">
             <SheetTitle className="text-[#2D241E] dark:text-[#f5ede3] font-serif">Không gian phòng</SheetTitle>
             <SheetDescription className="text-stone-500 dark:text-[#75695e]">{roomName || "Virtual Study Room"}</SheetDescription>
           </SheetHeader>
 
           {/* Đồng hồ Pomodoro đồng bộ */}
-          <div className="space-y-3 border-b border-stone-200 bg-stone-100/60 dark:border-[#2d2620] dark:bg-[#201b18]/60 px-5 py-4">
+          <div className="shrink-0 space-y-3 border-b border-stone-200 bg-stone-100/60 dark:border-[#2d2620] dark:bg-[#201b18]/60 px-5 py-3">
             <PomodoroWidget
               minutes={pomodoroMinutes}
               seconds={pomodoroSeconds}
@@ -609,7 +610,7 @@ export function RoomSidePanel({
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 border-b border-stone-200 px-4 py-2 bg-stone-100/70 dark:border-[#2d2620] dark:bg-[#181513]/40">
+          <div className="shrink-0 flex gap-1 border-b border-stone-200 px-4 py-2 bg-stone-100/70 dark:border-[#2d2620] dark:bg-[#181513]/40">
             <TabButton
               active={tab === "chat"}
               onClick={() => setTab("chat")}
@@ -703,7 +704,7 @@ export function RoomSidePanel({
               );
 
               return (
-                <div className="flex flex-1 flex-col overflow-hidden">
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                   {/* Thanh điều phối đầu danh sách cho Chủ phòng */}
                   {isCurrentUserHost && (
                     <div className="border-b border-zinc-800/60 bg-zinc-950/40 px-3 py-2">
@@ -996,13 +997,15 @@ export function RoomSidePanel({
             </div>
           ) : tab === "ai" ? (
             /* Nội dung tab Study AI Tutor */
-            <StudyAITutorPanel
-              roomCode={roomCode}
-              roomSubject={roomName}
-              isPro={isPro}
-              onUpgradeClick={onUpgradeClick}
-              className="flex-1 min-h-0"
-            />
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <StudyAITutorPanel
+                roomCode={roomCode}
+                roomSubject={roomName}
+                isPro={isPro}
+                onUpgradeClick={onUpgradeClick}
+                className="flex-1 min-h-0 h-full"
+              />
+            </div>
           ) : tab === "files" ? (
             /* Nội dung tab Tài liệu phòng học */
             <div className="flex min-h-0 flex-1 flex-col">

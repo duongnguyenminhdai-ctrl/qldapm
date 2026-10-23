@@ -108,7 +108,26 @@ const createRoom = async (req, res, next) => {
     );
 
     const isChess = (category && category.trim().toLowerCase() === "chess") || req.body.type === "chess";
-    const finalMaxMembers = isChess ? 2 : (maxMembers || 20);
+    const requestedMax = parseInt(maxMembers, 10) || 20;
+    let finalMaxMembers = 20;
+
+    if (isChess) {
+      finalMaxMembers = 2;
+    } else {
+      const isVip = Boolean(req.user?.role === "ADMIN" || req.user?.isPro);
+      if (requestedMax > 20) {
+        if (!isVip) {
+          return res.status(403).json({
+            success: false,
+            code: "VIP_REQUIRED_MAX_MEMBERS",
+            message: "Tính năng mở rộng phòng học trên 20 người (tối đa 60 người) chỉ dành riêng cho tài khoản VIP.",
+          });
+        }
+        finalMaxMembers = Math.min(60, Math.max(2, requestedMax));
+      } else {
+        finalMaxMembers = Math.max(2, requestedMax);
+      }
+    }
     const finalCategory = isChess ? "chess" : (category && category.trim() ? category.trim().toLowerCase() : "general");
     const finalType = isChess ? "chess" : "study";
 
@@ -839,11 +858,102 @@ const leaveRoom = async (req, res, next) => {
   }
 };
 
+/**
+ * PATCH /api/rooms/:roomCode/settings
+ * Body: { maxMembers, accessType, title, description }
+ * Cập nhật cấu hình phòng học (sức chứa maxMembers, quyền truy cập).
+ * Chỉ Host hoặc ADMIN mới có quyền. Sức chứa > 20 yêu cầu tài khoản VIP.
+ */
+const updateRoomSettings = async (req, res, next) => {
+  try {
+    const { roomCode } = req.params;
+    const { maxMembers, accessType, title, description } = req.body;
+    const userId = String(req.user.id || req.user._id);
+
+    if (!roomCode) {
+      return res.status(400).json({ success: false, message: "Mã phòng không hợp lệ." });
+    }
+
+    const normalizedCode = roomCode.trim().toUpperCase();
+    const room = await Room.findOne({ roomCode: normalizedCode });
+    if (!room) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy phòng học." });
+    }
+
+    // Chỉ Host hoặc ADMIN mới có quyền chỉnh sửa
+    const isHost = String(room.hostId) === userId;
+    const isAdmin = req.user.role === "ADMIN";
+    if (!isHost && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Chỉ chủ phòng mới có quyền thay đổi cài đặt phòng học.",
+      });
+    }
+
+    const updateFields = {};
+
+    if (maxMembers !== undefined && room.category !== "chess") {
+      const parsedMax = parseInt(maxMembers, 10);
+      if (isNaN(parsedMax) || parsedMax < 2) {
+        return res.status(400).json({
+          success: false,
+          message: "Sức chứa tối thiểu của phòng học là 2 người.",
+        });
+      }
+
+      const isVip = Boolean(req.user?.role === "ADMIN" || req.user?.isPro);
+      if (parsedMax > 20 && !isVip) {
+        return res.status(403).json({
+          success: false,
+          code: "VIP_REQUIRED_MAX_MEMBERS",
+          message: "Tính năng nâng sức chứa phòng học lên trên 20 người (tối đa 60 người) chỉ dành riêng cho tài khoản VIP.",
+        });
+      }
+
+      updateFields.maxMembers = Math.min(60, Math.max(2, parsedMax));
+    }
+
+    if (accessType && ["OPEN", "APPROVAL_REQUIRED"].includes(accessType)) {
+      updateFields.accessType = accessType;
+    }
+    if (title && title.trim()) {
+      updateFields.title = title.trim();
+    }
+    if (description !== undefined) {
+      updateFields.description = String(description).trim();
+    }
+
+    const updated = await Room.findByIdAndUpdate(room._id, { $set: updateFields }, { new: true })
+      .populate("hostId", "name email avatar isPro title equippedTitle");
+
+    const io = getIo();
+    if (io) {
+      io.to(normalizedCode).emit("room:settings-updated", {
+        roomCode: normalizedCode,
+        maxMembers: updated.maxMembers,
+        accessType: updated.accessType,
+        title: updated.title,
+        description: updated.description,
+      });
+      io.emit("room_list_updated", { roomCode: normalizedCode, action: "updated" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Cập nhật cài đặt phòng học thành công.",
+      data: { room: updated },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   createRoom,
   joinRoom,
   leaveRoom,
   getRoomByCode,
   getRooms,
+  updateRoomSettings,
 };
 

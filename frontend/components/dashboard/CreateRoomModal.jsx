@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Clock,
   ArrowRight,
+  Crown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +35,7 @@ export function CreateRoomModal({ pendingRoom = null }) {
   const [category, setCategory] = useState("general");
   const [isPrivate, setIsPrivate] = useState(false);
   const [accessType, setAccessType] = useState("OPEN"); // "OPEN" | "APPROVAL_REQUIRED"
+  const [maxMembers, setMaxMembers] = useState(20);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
@@ -94,13 +96,13 @@ export function CreateRoomModal({ pendingRoom = null }) {
     setError("");
     setLoading(true);
     try {
-      const maxMembers = category === "chess" ? 2 : 20;
+      const selectedMax = category === "chess" ? 2 : (maxMembers || 20);
       const result = await roomsApi.create({
         title: trimmed,
         category,
         isPrivate,
         accessType,
-        maxMembers,
+        maxMembers: selectedMax,
         type: category === "chess" ? "chess" : "study",
       });
       const room = result?.data?.room;
@@ -144,6 +146,7 @@ export function CreateRoomModal({ pendingRoom = null }) {
       setTitle("");
       setIsPrivate(false);
       setAccessType("OPEN");
+      setMaxMembers(20);
       setError("");
       setLoading(false);
       setIsRedirecting(false);

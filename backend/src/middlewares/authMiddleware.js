@@ -20,7 +20,7 @@ const getUserCachedStatus = async (userId) => {
   if (cached && now < cached.expiresAt) {
     return cached.data;
   }
-  const user = await User.findById(userId).select("status role isBanned").lean();
+  const user = await User.findById(userId).select("status role isBanned isPro proExpiresAt").lean();
   if (user) {
     userStatusCache.set(String(userId), {
       data: user,
@@ -100,6 +100,10 @@ const protect = async (req, res, next) => {
 
     req.user.role = currentUser.role;
     req.user.status = currentUser.status;
+    req.user.isPro = Boolean(
+      currentUser.role === "ADMIN" ||
+      (currentUser.isPro && (!currentUser.proExpiresAt || new Date() <= new Date(currentUser.proExpiresAt)))
+    );
     return next();
   } catch (error) {
     // Chỉ cho phép tự động gia hạn nếu token vừa mới hết hạn trong vòng tối đa 2 ngày

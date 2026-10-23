@@ -286,6 +286,9 @@ export const roomsApi = {
   getByCode: (roomCode) => apiClient(`/rooms/${roomCode}`),
   /** Alias tương thích */
   getById: (id) => apiClient(`/rooms/${id}`),
+  /** Cập nhật cài đặt phòng học (sức chứa maxMembers lên đến 60 người cho VIP, quyền truy cập) */
+  updateSettings: (roomCode, payload) =>
+    apiClient(`/rooms/${roomCode}/settings`, { method: "PATCH", body: payload }),
 };
 
 export const livekitApi = {
@@ -653,6 +656,16 @@ export const aiApi = {
     apiClient("/ai/tutor", {
       method: "POST",
       body: { message, history, contextType, roomSubject },
+    }),
+  transcribeAudio: ({ audioBase64, mimeType = "audio/webm", roomSubject = "" }) =>
+    apiClient("/ai/transcribe-audio", {
+      method: "POST",
+      body: { audioBase64, mimeType, roomSubject },
+    }),
+  summarizeTranscript: ({ transcriptText, roomSubject = "" }) =>
+    apiClient("/ai/summarize-transcript", {
+      method: "POST",
+      body: { transcriptText, roomSubject },
     }),
 };
 
