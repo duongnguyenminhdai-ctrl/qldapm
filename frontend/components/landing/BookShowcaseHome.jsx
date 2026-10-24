@@ -578,7 +578,12 @@ export default function BookShowcaseHome() {
   /* ═══════════════════════════════════════════════════════════════════════
      HANDLERS
      ═══════════════════════════════════════════════════════════════════════ */
-  const handleLogout = () => { clearAuthSession(); setUser(null); router.refresh(); };
+  const handleLogout = () => {
+    clearAuthSession();
+    setUser(null);
+    setIsMobileMenuOpen(false);
+    router.replace("/login");
+  };
 
   const handleSelectBook = (bookId) => {
     if (selectedBook === bookId) return;
@@ -1664,7 +1669,7 @@ export default function BookShowcaseHome() {
           aria-modal="true"
           aria-label="Menu điều hướng người dùng"
         >
-          <div className="flex flex-col space-y-4">
+          <div className="flex-1 overflow-y-auto space-y-3 pr-1">
             {/* Đầu Drawer: Thông tin người dùng + Nút đóng (X) ở góc phải */}
             <div className="flex items-center justify-between pb-3 border-b border-amber-900/30">
               <div className="flex items-center gap-3 min-w-0">
@@ -1798,19 +1803,15 @@ export default function BookShowcaseHome() {
             </div>
           </div>
 
-          {/* 5. Nút "Đăng xuất" ở đáy menu */}
-          <div className="pt-4 border-t border-amber-900/30">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setIsMobileMenuOpen(false);
-                handleLogout();
-              }}
-              className="w-full justify-center gap-2 text-rose-400 hover:bg-rose-500/10 h-11 text-sm font-semibold rounded-xl cursor-pointer"
+          {/* BỔ SUNG KHỐI ĐĂNG XUẤT Ở ĐÁY DRAWER */}
+          <div className="pt-4 mt-auto border-t border-amber-900/30">
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-950/20 border border-red-900/40 text-red-400 font-medium hover:bg-red-950/40 transition-colors"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="w-5 h-5"/>
               <span>Đăng xuất</span>
-            </Button>
+            </button>
           </div>
         </div>
       )}

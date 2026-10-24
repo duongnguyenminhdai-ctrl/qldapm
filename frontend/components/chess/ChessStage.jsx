@@ -562,7 +562,7 @@ export function ChessStage({
   }
 
   return (
-    <div className="relative flex h-full w-full min-h-0 flex-col items-center justify-center overflow-y-auto overflow-x-hidden p-2 py-4">
+    <div className="relative flex h-full w-full min-h-0 flex-col items-center justify-start md:justify-center overflow-y-auto overflow-x-hidden p-2 py-4">
       {/* 1. THẺ VIDEO ĐỐI THỦ: Cố định góc trên bên trái */}
       <div className="fixed top-20 left-6 z-30 h-[130px] w-[220px] overflow-hidden rounded-2xl border-2 border-amber-500/40 bg-zinc-900/80 shadow-2xl backdrop-blur-md transition-all hover:border-amber-400">
         {opponentMember ? (
@@ -598,7 +598,7 @@ export function ChessStage({
       {/* 3. KHU VỰC TRUNG TÂM */}
       {participantsCount < 2 ? (
         /* TRẠNG THÁI CHỜ ĐỐI THỦ (1 người) */
-        <div className="flex flex-col items-center justify-center text-center animate-in fade-in duration-500">
+        <div className="flex flex-col items-center justify-center text-center animate-in fade-in duration-500 my-auto pt-16 md:pt-20">
           <div className="relative mb-6 flex h-48 w-48 sm:h-56 sm:w-56 items-center justify-center">
             {isMounted && (runHomeData || lottieData) ? (
               <Lottie 
@@ -634,9 +634,9 @@ export function ChessStage({
         </div>
       ) : (
         /* TRẠNG THÁI THI ĐẤU CỜ VUA (2 người) */
-        <div className="relative flex flex-col items-center justify-center">
+        <div className="relative flex flex-col items-center justify-center pt-16 md:pt-20 w-full my-auto">
           {/* Thanh công cụ & Đồng hồ ván đấu (Dark Academia Header Card) */}
-          <div className="w-full max-w-[500px] mb-3 px-4 py-2.5 rounded-xl bg-[#1c1815]/90 border border-amber-500/20 backdrop-blur-sm shadow-lg flex items-center justify-between gap-3">
+          <div className="w-full max-w-[min(85vw,70vh)] mb-3 px-4 py-2.5 rounded-xl bg-[#1c1815]/90 border border-amber-500/20 backdrop-blur-sm shadow-lg shrink-0 flex items-center justify-between gap-2 z-10">
             {/* Cụm bên trái: Đồng hồ & Trạng thái ván đấu */}
             <div className="flex items-center gap-3 min-w-0">
               {/* Đồng hồ 10:00 */}
@@ -737,8 +737,8 @@ export function ChessStage({
           </div>
 
           {/* Bàn cờ vua 2D phong cách Dark Academia */}
-          <div className="relative z-10 pointer-events-auto flex items-center justify-center p-2 rounded-2xl border-4 border-[#3d2f23] bg-[#1a1410] shadow-[0_20px_50px_rgba(0,0,0,0.8)] overflow-hidden">
-            <div className="relative z-10 pointer-events-auto w-[340px] sm:w-[440px] md:w-[480px]">
+          <div className="relative z-10 pointer-events-auto flex items-center justify-center p-2 rounded-2xl border-4 border-[#3d2f23] bg-[#1a1410] shadow-[0_20px_50px_rgba(0,0,0,0.8)] overflow-hidden w-full max-w-[min(85vw,70vh)] aspect-square mx-auto">
+            <div className="relative z-10 pointer-events-auto w-full aspect-square">
               <ChessBoard
                 game={game}
                 setGame={(newG) => {

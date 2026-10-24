@@ -342,7 +342,7 @@ export function ChessBoard({
   };
 
   return (
-    <div className="relative z-10 pointer-events-auto">
+    <div className="relative z-10 pointer-events-auto w-full h-full flex items-center justify-center">
       <Chessboard
         options={chessboardOptions}
         position={game.fen()}
