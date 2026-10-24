@@ -435,14 +435,14 @@ export function HomeHeader() {
                 {/* Khung Drawer trượt từ cạnh phải */}
                 <div
                   className={cn(
-                    "fixed top-0 right-0 h-full w-[280px] bg-[#1a1612] border-l border-amber-900/30 p-5 z-50 flex flex-col justify-between transition-transform duration-300 ease-in-out md:hidden text-[#f5ede3]",
+                    "fixed top-0 right-0 h-full w-[280px] bg-[#1a1612] border-l border-amber-900/30 p-5 z-50 flex flex-col transition-transform duration-300 ease-in-out md:hidden text-[#f5ede3]",
                     isMenuOpen ? "translate-x-0" : "translate-x-full pointer-events-none"
                   )}
                   role="dialog"
                   aria-modal="true"
                   aria-label="Menu điều hướng người dùng"
                 >
-                  <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                  <div className="flex-1 overflow-y-auto max-h-screen flex flex-col space-y-3 pr-1 pb-28">
                     {/* Đầu Drawer: Thông tin người dùng + Nút đóng (X) ở góc phải */}
                     <div className="flex items-center justify-between pb-3 border-b border-amber-900/30">
                       <div className="flex items-center gap-3 min-w-0">
@@ -586,17 +586,17 @@ export function HomeHeader() {
                         <ThemeToggle />
                       </div>
                     </div>
-                  </div>
 
-                  {/* BỔ SUNG KHỐI ĐĂNG XUẤT Ở ĐÁY DRAWER */}
-                  <div className="pt-4 mt-auto border-t border-amber-900/30">
-                    <button
-                      onClick={handleLogout}
-                      className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-950/20 border border-red-900/40 text-red-400 font-medium hover:bg-red-950/40 transition-colors"
-                    >
-                      <LogOut className="w-5 h-5"/>
-                      <span>Đăng xuất</span>
-                    </button>
+                    {/* 5. NÚT ĐĂNG XUẤT NẰM TRONG LUỒNG CUỘN (KÈM KHOẢNG ĐỆM ĐÁY AN TOÀN) */}
+                    <div className="mt-4 pb-8">
+                      <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-950/20 border border-red-900/40 text-red-400 font-medium hover:bg-red-950/40 transition-colors cursor-pointer"
+                      >
+                        <LogOut className="w-5 h-5"/>
+                        <span>Đăng xuất</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </>

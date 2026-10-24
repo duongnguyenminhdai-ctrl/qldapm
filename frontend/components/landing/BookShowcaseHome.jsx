@@ -859,9 +859,8 @@ export default function BookShowcaseHome() {
   const onlineFriendsCount = friends.filter(f => f.isOnline).length;
   const isDetailMode = selectedBook !== null;
 
-  /* ── Lightweight Parallax (Direct DOM style, zero React re-renders) ─────── */
+  /* ── 3D Parallax / Mouse Tilt xoay sách theo con trỏ chuột (ThreeUI Showcase) ─────── */
   useEffect(() => {
-    if (isDetailMode) return;
     let frame = 0;
     const stage = stageRef.current;
     if (!stage) return;
@@ -871,17 +870,75 @@ export default function BookShowcaseHome() {
       frame = window.requestAnimationFrame(() => {
         frame = 0;
         if (!stage) return;
-        const px = e.clientX / window.innerWidth - 0.5;
-        const py = e.clientY / window.innerHeight - 0.5;
-        stage.style.setProperty("--mx", `${px * 11}px`);
-        stage.style.setProperty("--my", `${py * 8}px`);
+
+        if (isDetailMode) {
+          const card = stage.querySelector(".bs-book-card.selected");
+          if (!card) return;
+
+          const bounds = card.getBoundingClientRect();
+          const centerX = bounds.left + bounds.width / 2;
+          const centerY = bounds.top + bounds.height / 2;
+          const width = window.innerWidth || 1;
+          const height = window.innerHeight || 1;
+
+          // 1. Chuẩn hóa tọa độ chuột từ tâm: giá trị từ -1 đến 1
+          const normX = Math.max(-1, Math.min(1, (e.clientX - centerX) / (width / 2)));
+          const normY = Math.max(-1, Math.min(1, (e.clientY - centerY) / (height / 2)));
+
+          // 2. Cập nhật góc xoay 3D qua requestAnimationFrame: nghiêng tối đa ~22 độ (Y) và ~15 độ (X)
+          card.style.setProperty("--detail-yaw", `${normX * 22}deg`);
+          card.style.setProperty("--detail-pitch", `${-normY * 15}deg`);
+
+          const book = card.querySelector(".bs-book");
+          if (book) {
+            book.style.transform = `scale(1.02) rotateY(${normX * 22}deg) rotateX(${-normY * 15}deg)`;
+          }
+        } else {
+          const width = window.innerWidth || 1;
+          const height = window.innerHeight || 1;
+          const centerX = width / 2;
+          const centerY = height / 2;
+
+          const normX = Math.max(-1, Math.min(1, (e.clientX - centerX) / (width / 2)));
+          const normY = Math.max(-1, Math.min(1, (e.clientY - centerY) / (height / 2)));
+
+          stage.style.setProperty("--mx", `${normX * 11}px`);
+          stage.style.setProperty("--my", `${normY * 8}px`);
+
+          const cards = stage.querySelectorAll(".bs-book-card");
+          cards.forEach((c, index) => {
+            const depth = index === 1 ? 1 : 0.58;
+            c.style.setProperty("--local-x", `${normX * 15 * depth}px`);
+            c.style.setProperty("--local-y", `${normY * 9 * depth}px`);
+          });
+        }
       });
     };
 
+    // 3. Hiệu ứng hồi vị (Mouse Leave): Tự động đưa normX = 0, normY = 0 trở về góc thẳng ban đầu
     const onPointerLeave = () => {
-      if (stage) {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+        frame = 0;
+      }
+      if (isDetailMode) {
+        const card = stage.querySelector(".bs-book-card.selected");
+        if (card) {
+          card.style.setProperty("--detail-yaw", "0deg");
+          card.style.setProperty("--detail-pitch", "0deg");
+          const book = card.querySelector(".bs-book");
+          if (book) {
+            book.style.transform = "scale(1.02) rotateY(0deg) rotateX(0deg)";
+          }
+        }
+      } else {
         stage.style.setProperty("--mx", "0px");
         stage.style.setProperty("--my", "0px");
+        const cards = stage.querySelectorAll(".bs-book-card");
+        cards.forEach((c) => {
+          c.style.setProperty("--local-x", "0px");
+          c.style.setProperty("--local-y", "0px");
+        });
       }
     };
 
@@ -892,6 +949,7 @@ export default function BookShowcaseHome() {
       if (frame) window.cancelAnimationFrame(frame);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerleave", onPointerLeave);
+      onPointerLeave();
     };
   }, [isDetailMode]);
 
@@ -1662,14 +1720,14 @@ export default function BookShowcaseHome() {
       {user && (
         <div
           className={cn(
-            "fixed top-0 right-0 h-full w-[280px] bg-[#1a1612] border-l border-amber-900/30 p-5 z-50 flex flex-col justify-between transition-transform duration-300 ease-in-out md:hidden text-[#f5ede3]",
+            "fixed top-0 right-0 h-full w-[280px] bg-[#1a1612] border-l border-amber-900/30 p-5 z-50 flex flex-col transition-transform duration-300 ease-in-out md:hidden text-[#f5ede3]",
             isMobileMenuOpen ? "translate-x-0" : "translate-x-full pointer-events-none"
           )}
           role="dialog"
           aria-modal="true"
           aria-label="Menu điều hướng người dùng"
         >
-          <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+          <div className="flex-1 overflow-y-auto max-h-screen flex flex-col space-y-3 pr-1 pb-28">
             {/* Đầu Drawer: Thông tin người dùng + Nút đóng (X) ở góc phải */}
             <div className="flex items-center justify-between pb-3 border-b border-amber-900/30">
               <div className="flex items-center gap-3 min-w-0">
@@ -1801,17 +1859,17 @@ export default function BookShowcaseHome() {
                 <ThemeToggle />
               </div>
             </div>
-          </div>
 
-          {/* BỔ SUNG KHỐI ĐĂNG XUẤT Ở ĐÁY DRAWER */}
-          <div className="pt-4 mt-auto border-t border-amber-900/30">
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-950/20 border border-red-900/40 text-red-400 font-medium hover:bg-red-950/40 transition-colors"
-            >
-              <LogOut className="w-5 h-5"/>
-              <span>Đăng xuất</span>
-            </button>
+            {/* 5. NÚT ĐĂNG XUẤT NẰM TRONG LUỒNG CUỘN (KÈM KHOẢNG ĐỆM ĐÁY AN TOÀN) */}
+            <div className="mt-4 pb-8">
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-red-950/20 border border-red-900/40 text-red-400 font-medium hover:bg-red-950/40 transition-colors cursor-pointer"
+              >
+                <LogOut className="w-5 h-5"/>
+                <span>Đăng xuất</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

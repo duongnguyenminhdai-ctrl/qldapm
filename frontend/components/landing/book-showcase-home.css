@@ -299,6 +299,10 @@ html.light {
 }
 
 /* ── 3D BOOK SHELF ───────────────────────────────────────────────────────── */
+.bs-stage {
+  perspective: 1200px;
+}
+
 .bs-shelf {
   position: absolute;
   z-index: 5;
@@ -308,7 +312,7 @@ html.light {
   max-width: 100%;
   max-height: 100%;
   overflow: hidden;
-  perspective: 1400px;
+  perspective: 1200px;
   transform-style: flat;
   pointer-events: none;
   contain: layout paint;
@@ -683,7 +687,7 @@ html.light {
   --hover-y: 0px;
   --local-x: 0px;
   --local-y: 0px;
-  --detail-yaw: -5deg;
+  --detail-yaw: 0deg;
   --detail-pitch: 0deg;
   left: 23%;
   top: 50%;
@@ -695,9 +699,9 @@ html.light {
 }
 
 [data-mode="detail"] .bs-book-card.selected .bs-book {
-  transform: scale(1.02) rotateX(var(--detail-pitch, 0deg)) rotateY(var(--detail-yaw, -5deg));
-  transition-duration: 170ms;
-  transition-timing-function: var(--bs-ease);
+  transform: scale(1.02) rotateY(var(--detail-yaw, 0deg)) rotateX(var(--detail-pitch, 0deg));
+  transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-style: preserve-3d;
 }
 
 [data-mode="detail"] .bs-book-card.selected .bs-front-cover {
