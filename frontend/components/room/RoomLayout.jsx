@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
-import { Check, Copy, Link2, Users, AlertCircle, X, Award, QrCode, ShieldCheck, Lock, Unlock, Sun, Moon } from "lucide-react";
+import { Check, Copy, Link2, Users, AlertCircle, X, Award, QrCode, ShieldCheck, Lock, Unlock, Sun, Moon, ArrowRightLeft, Laptop } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ICON_STROKE } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
@@ -422,7 +422,13 @@ export default function RoomLayout({ roomCode, initialRoom }) {
   const [myFocusStatus, setMyFocusStatus] = useState(null);
   const [pinnedItem, setPinnedItem] = useState(null);
   const forceMuteActionRef = useRef(null);
+  const emitJoinRef = useRef(null);
   const isPro = Boolean(currentUser?.isPro);
+
+  // Quản lý độc quyền phiên học (Single Active Room Session / Switch to this device như Google Meet)
+  const [deviceConflictData, setDeviceConflictData] = useState(null);
+  const [isForceEvicted, setIsForceEvicted] = useState(false);
+  const [evictedReason, setEvictedReason] = useState("");
 
   // Quản lý trạng thái Giơ tay phát biểu & Thả cảm xúc nổi
   const [isHandRaised, setIsHandRaised] = useState(false);
@@ -708,6 +714,8 @@ export default function RoomLayout({ roomCode, initialRoom }) {
 
     // Emit join-room ngay sau khi connect
     const emitJoin = () => {
+      if (isForceEvicted) return;
+
       const uId = currentUser?.id || currentUser?._id;
       if (uId) {
         socket.emit("user:authenticate", { userId: uId });
@@ -730,6 +738,13 @@ export default function RoomLayout({ roomCode, initialRoom }) {
           },
         },
         (res) => {
+          if (res?.deviceConflict || res?.code === "DEVICE_CONFLICT") {
+            setDeviceConflictData({
+              currentRoomId: res.currentRoomId,
+              currentRoomCode: res.currentRoomCode,
+            });
+            return;
+          }
           if (res?.success && res?.participants) {
             handleSync(res.participants, res.hostId, res.titleVisibility, res.raisedHands, res.focusStatuses);
             if (res.pendingList) {
@@ -745,6 +760,45 @@ export default function RoomLayout({ roomCode, initialRoom }) {
         }
       );
     };
+
+    emitJoinRef.current = emitJoin;
+
+    // Lắng nghe xung đột thiết bị (Single Active Room Session / Switch Device)
+    const handleDeviceConflict = (data) => {
+      console.warn("[Room] Nhận thông báo xung đột thiết bị:", data);
+      setDeviceConflictData(data || { currentRoomCode: roomCode, currentRoomId: room?._id });
+    };
+
+    // Lắng nghe bị ngắt kết nối do chuyển sang thiết bị khác (Force Evicted)
+    const handleForceEvicted = (data) => {
+      console.warn("[Room] Bị ngắt kết nối do chuyển sang thiết bị khác:", data);
+      setIsForceEvicted(true);
+      setEvictedReason(
+        data?.message ||
+        "Bạn đã rời phòng học do tài khoản vừa được chuyển sang sử dụng trên một thiết bị khác."
+      );
+      // Ngắt LiveKit / Camera / Mic tức thì
+      setLivekitToken(null);
+      setLivekitUrl(null);
+      hasLeftRef.current = true;
+
+      addToast({
+        type: "error",
+        title: "Đã chuyển thiết bị",
+        body: "Bạn đã rời phòng học do tài khoản vừa được chuyển sang sử dụng trên một thiết bị khác.",
+      });
+
+      try {
+        sessionStorage.setItem("vsr_evicted_notice", "Bạn đã rời phòng học do tài khoản vừa được chuyển sang sử dụng trên một thiết bị khác.");
+      } catch (_) {}
+
+      setTimeout(() => {
+        router.push("/dashboard?book=rooms");
+      }, 2500);
+    };
+
+    socket.on("room:device-conflict", handleDeviceConflict);
+    socket.on("room:force-evicted", handleForceEvicted);
 
     if (socket.connected) {
       emitJoin();
@@ -1357,6 +1411,8 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       socket.off("room:alone-cancelled");
       socket.off("room_terminated", handleRoomTerminated);
       socket.off("room:terminated", handleRoomTerminated);
+      socket.off("room:device-conflict", handleDeviceConflict);
+      socket.off("room:force-evicted", handleForceEvicted);
       clearInterval(studyHeartbeatInterval);
       window.removeEventListener("focus", handleWindowFocus);
     };
@@ -1801,6 +1857,36 @@ export default function RoomLayout({ roomCode, initialRoom }) {
     leaveRoomNow(true, options);
     router.push("/dashboard?book=rooms");
   }, [leaveRoomNow, router]);
+
+  // Xử lý xác nhận chuyển phiên học sang thiết bị này (Google Meet style)
+  const handleConfirmSwitchDevice = useCallback(() => {
+    const socket = socketRef.current;
+    if (socket && socket.connected) {
+      const targetRoomId = room?._id || deviceConflictData?.currentRoomId || roomCode;
+      const targetRoomCode = roomCode || deviceConflictData?.currentRoomCode;
+
+      socket.emit(
+        "room:confirm-switch-device",
+        {
+          roomId: targetRoomId,
+          roomCode: targetRoomCode,
+        },
+        () => {
+          setDeviceConflictData(null);
+          if (emitJoinRef.current) {
+            emitJoinRef.current();
+          }
+        }
+      );
+    } else {
+      setDeviceConflictData(null);
+    }
+  }, [room, deviceConflictData, roomCode]);
+
+  const handleCancelSwitchDevice = useCallback(() => {
+    setDeviceConflictData(null);
+    router.push("/dashboard?book=rooms");
+  }, [router]);
 
   // Sao chép liên kết phòng
   const handleCopyLink = useCallback(() => {
@@ -2299,6 +2385,79 @@ export default function RoomLayout({ roomCode, initialRoom }) {
         roomTitle={displayTitle}
         accessType={room?.accessType || "OPEN"}
       />
+
+      {/* Modal Xác nhận Chuyển thiết bị phong cách Google Meet */}
+      {deviceConflictData && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md rounded-2xl border border-stone-200 bg-[#FAF8F5] p-6 shadow-2xl dark:border-[#3a3128] dark:bg-[#1c1815] text-[#2D241E] dark:text-[#f5ede3] space-y-5">
+            <div className="flex items-center gap-3.5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-[#c3a47b]">
+                <ArrowRightLeft className="h-6 w-6 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="font-serif text-lg font-bold text-[#2D241E] dark:text-[#f5ede3] leading-snug">
+                  Chuyển phiên học sang thiết bị này?
+                </h3>
+                <p className="text-xs text-stone-500 dark:text-[#8d7e71] mt-0.5">
+                  Phát hiện phiên đang mở:{" "}
+                  <span className="font-mono font-semibold text-amber-600 dark:text-[#c3a47b]">
+                    {deviceConflictData.currentRoomCode || roomCode}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm leading-relaxed text-stone-600 dark:text-[#c4b5a5]">
+              Tài khoản của bạn hiện đang tham gia một phòng học trên thiết bị khác. Nếu chuyển, thiết bị kia sẽ tự động rời khỏi phòng.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleCancelSwitchDevice}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium border border-stone-300 dark:border-[#3a3128] text-stone-700 dark:text-[#a89b8d] hover:bg-stone-200/60 dark:hover:bg-[#26201c] transition-colors"
+                id="btn-cancel-switch-device"
+              >
+                Ở lại ngoài này
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSwitchDevice}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-[#b3894e] via-[#c3a47b] to-[#b3894e] hover:from-[#c3a47b] hover:to-[#b3894e] text-stone-950 shadow-lg shadow-amber-900/20 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+                id="btn-confirm-switch-device"
+              >
+                Chuyển sang thiết bị này
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Màn hình thông báo bị ngắt phiên do chuyển sang thiết bị khác */}
+      {isForceEvicted && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 backdrop-blur-lg p-4 animate-in fade-in duration-300">
+          <div className="w-full max-w-md rounded-2xl border border-amber-500/30 bg-[#FAF8F5] p-6 shadow-2xl dark:border-[#3a3128] dark:bg-[#1c1815] text-center space-y-4">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-500">
+              <Laptop className="h-7 w-7" />
+            </div>
+            <h3 className="font-serif text-lg font-bold text-[#2D241E] dark:text-[#f5ede3]">
+              Đã chuyển phiên học
+            </h3>
+            <p className="text-sm leading-relaxed text-stone-600 dark:text-[#a89b8d]">
+              {evictedReason || "Bạn đã rời phòng học do tài khoản vừa được chuyển sang sử dụng trên một thiết bị khác."}
+            </p>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => router.push("/dashboard?book=rooms")}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold bg-[#c3a47b] text-stone-950 hover:bg-[#d6b88f] transition-colors shadow-md"
+              >
+                Quay lại danh sách phòng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </LiveKitRoom>
   );
 }

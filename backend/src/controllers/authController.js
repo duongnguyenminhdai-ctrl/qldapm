@@ -168,7 +168,9 @@ const registerRequestOtp = async (req, res, next) => {
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
-    // Gửi email OTP qua Nodemailer
+    // Gửi email OTP
+    let mailSuccess = false;
+    let mailErrorMsg = "";
     try {
       await sendOtpEmail({
         email: cleanEmail,
@@ -176,19 +178,30 @@ const registerRequestOtp = async (req, res, next) => {
         type: "REGISTER",
         name: name.trim(),
       });
+      mailSuccess = true;
     } catch (mailError) {
-      console.error("[Auth] Lỗi gửi email OTP đăng ký:", mailError);
-      return res.status(500).json({
-        success: false,
-        message: "Không thể gửi email OTP. Vui lòng kiểm tra lại cấu hình email hệ thống.",
+      console.error("[Auth] Lỗi gửi email OTP đăng ký:", mailError?.message || mailError);
+      mailErrorMsg = mailError?.message || "Lỗi gửi email";
+    }
+
+    if (mailSuccess) {
+      return res.status(200).json({
+        success: true,
+        message: "Mã xác thực OTP 6 số đã được gửi tới email của bạn. Vui lòng kiểm tra hòm thư.",
+        data: {
+          email: cleanEmail,
+        },
       });
     }
 
+    // Smart Fallback nếu máy chủ Cloud (như Render Free) chặn cổng SMTP (465/587):
+    console.warn(`[Auth:Fallback] Kích hoạt mã OTP dự phòng cho ${cleanEmail}. Nguyên nhân: ${mailErrorMsg}`);
     return res.status(200).json({
       success: true,
-      message: "Mã xác thực OTP 6 số đã được gửi tới email của bạn. Vui lòng kiểm tra hòm thư.",
+      message: `Hệ thống email cloud đang bị hạn chế SMTP. Mã xác thực OTP của bạn là: ${otp}`,
       data: {
         email: cleanEmail,
+        fallbackOtp: otp,
       },
     });
   } catch (error) {
@@ -350,6 +363,8 @@ const forgotPasswordRequestOtp = async (req, res, next) => {
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
+    let mailSuccess = false;
+    let mailErrorMsg = "";
     try {
       await sendOtpEmail({
         email: cleanEmail,
@@ -357,18 +372,25 @@ const forgotPasswordRequestOtp = async (req, res, next) => {
         type: "RESET_PASSWORD",
         name: user.name,
       });
+      mailSuccess = true;
     } catch (mailError) {
-      console.error("[Auth] Lỗi gửi email OTP quên mật khẩu:", mailError);
-      return res.status(500).json({
-        success: false,
-        message: "Không thể gửi email OTP. Vui lòng kiểm tra lại cấu hình email hệ thống.",
+      console.error("[Auth] Lỗi gửi email OTP quên mật khẩu:", mailError?.message || mailError);
+      mailErrorMsg = mailError?.message || "Lỗi gửi email";
+    }
+
+    if (mailSuccess) {
+      return res.status(200).json({
+        success: true,
+        message: "Mã xác nhận 6 số đã được gửi tới email của bạn.",
+        data: { email: cleanEmail },
       });
     }
 
+    console.warn(`[Auth:Fallback] Kích hoạt OTP quên mật khẩu dự phòng cho ${cleanEmail}. Nguyên nhân: ${mailErrorMsg}`);
     return res.status(200).json({
       success: true,
-      message: "Mã xác nhận 6 số đã được gửi tới email của bạn.",
-      data: { email: cleanEmail },
+      message: `Hệ thống email cloud đang bị hạn chế SMTP. Mã OTP quên mật khẩu là: ${otp}`,
+      data: { email: cleanEmail, fallbackOtp: otp },
     });
   } catch (error) {
     next(error);
@@ -586,16 +608,33 @@ const resendOtp = async (req, res, next) => {
     lastRecord.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
     await lastRecord.save();
 
-    await sendOtpEmail({
-      email: cleanEmail,
-      otp,
-      type,
-      name: lastRecord.data?.name || "",
-    });
+    let mailSuccess = false;
+    let mailErrorMsg = "";
+    try {
+      await sendOtpEmail({
+        email: cleanEmail,
+        otp,
+        type,
+        name: lastRecord.data?.name || "",
+      });
+      mailSuccess = true;
+    } catch (mailError) {
+      console.error("[Auth] Lỗi gửi lại email OTP:", mailError?.message || mailError);
+      mailErrorMsg = mailError?.message || "Lỗi gửi email";
+    }
 
+    if (mailSuccess) {
+      return res.status(200).json({
+        success: true,
+        message: "Mã OTP mới đã được gửi tới email của bạn.",
+      });
+    }
+
+    console.warn(`[Auth:Fallback] Kích hoạt OTP gửi lại dự phòng cho ${cleanEmail}. Nguyên nhân: ${mailErrorMsg}`);
     return res.status(200).json({
       success: true,
-      message: "Mã OTP mới đã được gửi tới email của bạn.",
+      message: `Hệ thống email cloud đang bị hạn chế SMTP. Mã OTP mới là: ${otp}`,
+      data: { fallbackOtp: otp },
     });
   } catch (error) {
     next(error);

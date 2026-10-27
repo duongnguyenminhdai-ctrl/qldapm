@@ -32,6 +32,9 @@ const aloneRoomTimers = new Map(); // key: normalizedCode -> { timer, expiresAt 
 // Bộ đếm thời lượng phòng tối đa 24 giờ kể từ createdAt (Max Duration)
 const roomMaxDurationTimers = new Map(); // key: normalizedCode -> timer
 
+// Quản lý độc quyền phiên học (Single Active Room Session per user)
+const activeRoomSessions = new Map(); // key: userId -> value: { socketId, roomId, roomCode, userAgent }
+
 function getOrCreateRoomState(roomCode) {
   const code = (roomCode || "").trim().toUpperCase();
   if (!roomStates.has(code)) {
@@ -1267,6 +1270,38 @@ const initSocket = (io) => {
         const userId = String(verifiedUserDoc._id);
         const uIdStr = String(verifiedUserDoc._id);
 
+        // Kiểm tra độc quyền phiên phòng học (Single Active Room Session / Switch Device như Google Meet)
+        const existingSession = activeRoomSessions.get(uIdStr);
+        if (existingSession && existingSession.socketId !== socket.id) {
+          const oldSocket = io.sockets.sockets.get(existingSession.socketId);
+          if (oldSocket && oldSocket.connected) {
+            console.log(
+              `[Socket Session] Xung đột phiên thiết bị cho user ${uIdStr}. Socket cũ: ${existingSession.socketId} (phòng ${existingSession.roomCode}), Socket mới: ${socket.id}`
+            );
+            socket.emit("room:device-conflict", {
+              currentRoomId: existingSession.roomId,
+              currentRoomCode: existingSession.roomCode,
+              targetRoomCode: normalizedCode,
+            });
+            if (typeof cb === "function") {
+              cb({
+                success: false,
+                deviceConflict: true,
+                code: "DEVICE_CONFLICT",
+                message:
+                  "Tài khoản của bạn hiện đang tham gia một phòng học trên thiết bị khác.",
+                currentRoomId: existingSession.roomId,
+                currentRoomCode: existingSession.roomCode,
+                targetRoomCode: normalizedCode,
+              });
+            }
+            return;
+          } else {
+            // Socket cũ không còn kết nối, giải phóng phiên cũ
+            activeRoomSessions.delete(uIdStr);
+          }
+        }
+
         if (
           checkRoom.bannedUsers &&
           checkRoom.bannedUsers.some((id) => String(id) === uIdStr)
@@ -1504,6 +1539,14 @@ const initSocket = (io) => {
         const hasActiveTranscription = (roomState.transcriptionListeners?.size || 0) > 0;
         socket.emit("room:transcription-status-changed", {
           hasActiveListener: hasActiveTranscription,
+        });
+
+        // Cập nhật phiên độc quyền hoạt động của user trên socket này
+        activeRoomSessions.set(uIdStr, {
+          socketId: socket.id,
+          roomId: checkRoom._id ? String(checkRoom._id) : normalizedCode,
+          roomCode: normalizedCode,
+          userAgent: socket.handshake?.headers?.["user-agent"] || "",
         });
 
         console.log(
@@ -3853,6 +3896,13 @@ const initSocket = (io) => {
           );
         }
 
+        if (userId) {
+          const current = activeRoomSessions.get(String(userId));
+          if (current && current.socketId === socket.id) {
+            activeRoomSessions.delete(String(userId));
+          }
+        }
+
         socket.roomCode = null;
         socket.userData = null;
 
@@ -3864,6 +3914,121 @@ const initSocket = (io) => {
         if (typeof callback === "function") {
           callback({ success: false, error: err.message });
         }
+      }
+    };
+
+    socket._handleLeaveRoom = handleLeaveRoom;
+
+    /**
+     * Sự kiện xác nhận chiếm quyền phiên học từ thiết bị mới (Single Active Room Session / Switch to this device)
+     */
+    const handleConfirmSwitchDevice = async (payload = {}, callback) => {
+      try {
+        const cb = typeof callback === "function" ? callback : null;
+        let effectiveUserId =
+          socket.authUserId ||
+          socket.authUser?.id ||
+          socket.authUser?._id ||
+          socket.user?._id ||
+          socket.user?.id ||
+          socket.userData?.id ||
+          socket.userData?._id ||
+          socket.userId;
+
+        const passedToken =
+          payload.token ||
+          socket.handshake.auth?.token ||
+          socket.handshake.query?.token;
+
+        if (!effectiveUserId && passedToken) {
+          try {
+            const decoded = jwt.verify(passedToken, process.env.JWT_SECRET, {
+              algorithms: ["HS256"],
+            });
+            if (decoded?.id || decoded?._id) {
+              effectiveUserId = String(decoded.id || decoded._id);
+              socket.authUserId = effectiveUserId;
+              socket.authUser = decoded;
+            }
+          } catch (_) {}
+        }
+
+        if (!effectiveUserId) {
+          if (cb) cb({ success: false, message: "Unauthorized: Không xác định được người dùng." });
+          return;
+        }
+
+        const uIdStr = String(effectiveUserId);
+        const existingSession = activeRoomSessions.get(uIdStr);
+
+        if (existingSession && existingSession.socketId !== socket.id) {
+          console.log(
+            `[Socket Session] Xác nhận chiếm quyền phiên học cho user ${uIdStr}: Ngắt phiên thiết bị cũ ${existingSession.socketId} (phòng ${existingSession.roomCode})`
+          );
+
+          // 1. Gửi lệnh ngắt kết nối đến socket cũ
+          io.to(existingSession.socketId).emit("room:force-evicted", {
+            reason: "SWITCHED_TO_ANOTHER_DEVICE",
+            message:
+              "Bạn đã rời phòng học do tài khoản vừa được chuyển sang sử dụng trên một thiết bị khác.",
+          });
+
+          // 2. Thực hiện logic rời phòng cho socket cũ (trừ sĩ số phòng, emit sự kiện user-left cho các học viên khác)
+          const oldSocket = io.sockets.sockets.get(existingSession.socketId);
+          if (oldSocket) {
+            const oldRoomCode = existingSession.roomCode;
+            if (oldRoomCode) {
+              const graceKey = `${oldRoomCode}_${uIdStr}`;
+              if (disconnectGraceTimers.has(graceKey)) {
+                clearTimeout(disconnectGraceTimers.get(graceKey));
+                disconnectGraceTimers.delete(graceKey);
+              }
+            }
+            if (typeof oldSocket._handleLeaveRoom === "function") {
+              await oldSocket._handleLeaveRoom({ roomCode: existingSession.roomCode });
+            } else {
+              oldSocket.leave(existingSession.roomCode);
+            }
+          }
+        }
+
+        const targetRoomId =
+          payload.roomId ||
+          payload.roomCode ||
+          existingSession?.roomId ||
+          socket.roomCode ||
+          "";
+        const targetRoomCode =
+          payload.roomCode ||
+          payload.roomId ||
+          existingSession?.roomCode ||
+          socket.roomCode ||
+          "";
+
+        // 3. Gán phiên mới cho socket hiện tại
+        activeRoomSessions.set(uIdStr, {
+          socketId: socket.id,
+          roomId: targetRoomId ? String(targetRoomId) : "",
+          roomCode: targetRoomCode ? String(targetRoomCode).trim().toUpperCase() : "",
+          userAgent: socket.handshake?.headers?.["user-agent"] || "",
+        });
+
+        if (cb) {
+          cb({
+            success: true,
+            message: "Đã chuyển phiên sang thiết bị này thành công.",
+            roomId: targetRoomId,
+            roomCode: targetRoomCode,
+          });
+        }
+        socket.emit("room:switch-device-success", {
+          success: true,
+          roomId: targetRoomId,
+          roomCode: targetRoomCode,
+        });
+      } catch (err) {
+        console.error("[Socket Session] Lỗi room:confirm-switch-device:", err.message);
+        if (typeof callback === "function") callback({ success: false, error: err.message });
       }
     };
 
@@ -3926,6 +4091,7 @@ const initSocket = (io) => {
     socket.on("leave-room", handleLeaveRoom);
     socket.on("leave_room", handleLeaveRoom);
     socket.on("room:leave", handleLeaveRoom);
+    socket.on("room:confirm-switch-device", handleConfirmSwitchDevice);
     socket.on("terminate_room", handleTerminateRoom);
     socket.on("room:terminate", handleTerminateRoom);
     socket.on("room:stay-alone", handleStayAlone);
@@ -4361,6 +4527,15 @@ const initSocket = (io) => {
       const user = socket.userData;
       const userId = user?.id || user?._id || socket.userId;
       const userName = user?.name || "Thành viên";
+
+      // Dọn dẹp phiên học độc quyền khi socket ngắt kết nối
+      const effectiveDisconnId = String(userId || socket.authUserId || "");
+      if (effectiveDisconnId) {
+        const current = activeRoomSessions.get(effectiveDisconnId);
+        if (current && current.socketId === socket.id) {
+          activeRoomSessions.delete(effectiveDisconnId);
+        }
+      }
 
       const lastCheck = socket.lastHeartbeatTime || socket.joinTimestamp;
       if (lastCheck && userId) {

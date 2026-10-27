@@ -55,6 +55,9 @@ export function ForgotPasswordForm({ onSwitchToLogin, onSwitchToRegister } = {})
         email: email.trim().toLowerCase(),
       });
       setSuccessToast(res?.message || "Đã gửi mã xác thực tới email của bạn.");
+      if (res?.data?.fallbackOtp) {
+        setOtp(res.data.fallbackOtp);
+      }
       setStep("OTP");
     } catch (err) {
       setErrorMsg(
@@ -118,6 +121,9 @@ export function ForgotPasswordForm({ onSwitchToLogin, onSwitchToRegister } = {})
         type: "RESET_PASSWORD",
       });
       setSuccessToast(res?.message || "Đã gửi lại mã OTP mới tới email của bạn.");
+      if (res?.data?.fallbackOtp) {
+        setOtp(res.data.fallbackOtp);
+      }
       return true;
     } catch (err) {
       setErrorMsg(

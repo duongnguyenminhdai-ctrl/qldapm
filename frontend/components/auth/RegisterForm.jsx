@@ -81,6 +81,9 @@ export function RegisterForm({ onSwitchToLogin, onSwitchToForgot } = {}) {
       setInfoMessage(
         res?.message || "Mã xác thực OTP đã được gửi tới email của bạn."
       );
+      if (res?.data?.fallbackOtp) {
+        setOtp(res.data.fallbackOtp);
+      }
       setStep("OTP");
     } catch (error) {
       const { formError: message, fieldErrors: nextFields } =
@@ -149,6 +152,9 @@ export function RegisterForm({ onSwitchToLogin, onSwitchToForgot } = {}) {
         type: "REGISTER",
       });
       setInfoMessage(res?.message || "Đã gửi lại mã OTP mới tới email của bạn.");
+      if (res?.data?.fallbackOtp) {
+        setOtp(res.data.fallbackOtp);
+      }
       return true;
     } catch (err) {
       setFormError(

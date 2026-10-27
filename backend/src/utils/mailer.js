@@ -2,6 +2,7 @@ const nodemailer = require("nodemailer");
 
 /**
  * Khởi tạo Transporter Nodemailer sử dụng Gmail App Password.
+ * Cấu hình connectionTimeout và socketTimeout ngắn (8s) để không bị treo vĩnh viễn trên Cloud (Render Free chặn SMTP).
  */
 const getTransporter = () => {
   const user = process.env.EMAIL_USER;
@@ -22,7 +23,71 @@ const getTransporter = () => {
       user,
       pass,
     },
+    connectionTimeout: 8000, // 8 giây - chống treo request trên Cloud
+    greetingTimeout: 8000,
+    socketTimeout: 10000,
   });
+};
+
+/**
+ * Gửi email qua HTTP REST API của Resend (cổng 443 HTTPS - không bao giờ bị Cloud/Render chặn)
+ */
+const sendViaResend = async ({ to, subject, html }) => {
+  const apiKey = process.env.RESEND_API_KEY;
+  const senderEmail = process.env.RESEND_FROM || "Virtual Study Room <onboarding@resend.dev>";
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: senderEmail,
+      to: [to],
+      subject,
+      html,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Resend API trả về lỗi (${res.status}): ${errText}`);
+  }
+
+  const data = await res.json();
+  console.log(`[Mailer:Resend] Đã gửi OTP thành công tới ${to} (id: ${data?.id})`);
+  return data;
+};
+
+/**
+ * Gửi email qua HTTP REST API của Brevo / Sendinblue (cổng 443 HTTPS - miễn phí 300 mail/ngày tới mọi email)
+ */
+const sendViaBrevo = async ({ to, subject, html }) => {
+  const apiKey = process.env.BREVO_API_KEY;
+  const senderEmail = process.env.BREVO_FROM_EMAIL || process.env.EMAIL_USER || "nguyenminhdaiduongtest1@gmail.com";
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "api-key": apiKey,
+      "Content-Type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: { name: "Virtual Study Room", email: senderEmail },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Brevo API trả về lỗi (${res.status}): ${errText}`);
+  }
+
+  const data = await res.json();
+  console.log(`[Mailer:Brevo] Đã gửi OTP thành công tới ${to} (messageId: ${data?.messageId})`);
+  return data;
 };
 
 const escapeHtml = (str) =>
@@ -136,8 +201,6 @@ const generateEmailTemplate = ({ title, preheader, name, otp, instruction, note 
  * @param {string} [params.name] - Tên người dùng
  */
 const sendOtpEmail = async ({ email, otp, type, name = "" }) => {
-  const transporter = getTransporter();
-
   let subject = "";
   let title = "";
   let preheader = "";
@@ -176,6 +239,18 @@ const sendOtpEmail = async ({ email, otp, type, name = "" }) => {
     note,
   });
 
+  // Ưu tiên 1: Dùng Resend HTTP API nếu có RESEND_API_KEY (không bao giờ bị Render chặn)
+  if (process.env.RESEND_API_KEY) {
+    return await sendViaResend({ to: email, subject, html });
+  }
+
+  // Ưu tiên 2: Dùng Brevo HTTP API nếu có BREVO_API_KEY (miễn phí 300 mail/ngày, port 443)
+  if (process.env.BREVO_API_KEY) {
+    return await sendViaBrevo({ to: email, subject, html });
+  }
+
+  // Ưu tiên 3: Nodemailer Gmail SMTP (cho Local hoặc Host cho phép cổng 465/587)
+  const transporter = getTransporter();
   const mailOptions = {
     from: `"Virtual Study Room" <${process.env.EMAIL_USER}>`,
     to: email,
@@ -184,7 +259,7 @@ const sendOtpEmail = async ({ email, otp, type, name = "" }) => {
   };
 
   const info = await transporter.sendMail(mailOptions);
-  console.log(`[Mailer] Đã gửi OTP (${type}) tới ${email}: messageId=${info.messageId}`);
+  console.log(`[Mailer:Nodemailer] Đã gửi OTP (${type}) tới ${email}: messageId=${info.messageId}`);
   return info;
 };
 

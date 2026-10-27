@@ -5,6 +5,16 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
+if (
+  typeof window !== "undefined" &&
+  window.location.hostname.endsWith(".vercel.app") &&
+  API_URL.includes("localhost")
+) {
+  console.warn(
+    "[VSR API Warning] Ứng dụng đang chạy trên Vercel nhưng NEXT_PUBLIC_API_URL chưa được cấu hình (đang trỏ về localhost). Vui lòng thêm NEXT_PUBLIC_API_URL trên Vercel Project Settings."
+  );
+}
+
 const TOKEN_KEY = "vsr_token";
 const USER_KEY = "vsr_user";
 
@@ -135,15 +145,28 @@ export async function apiClient(path, options = {}) {
 
   const executeRequest = async () => {
     let response;
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), 35000) : null;
     try {
       response = await fetch(url, {
         method,
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: controller ? controller.signal : undefined,
       });
+      if (timeoutId) clearTimeout(timeoutId);
     } catch (fetchErr) {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (fetchErr.name === "AbortError") {
+        const err = new Error(
+          "Máy chủ phản hồi quá lâu (quá 35s). Nếu máy chủ vừa thức dậy từ chế độ ngủ (Render Free Tier), vui lòng thử lại sau giây lát."
+        );
+        err.status = 504;
+        err.originalError = fetchErr;
+        throw err;
+      }
       const err = new Error(
-        "Không thể kết nối tới server backend (http://localhost:5000). Vui lòng đảm bảo backend đang chạy."
+        `Không thể kết nối tới server backend (${API_URL}). Vui lòng đảm bảo backend đang hoạt động.`
       );
       err.status = 503;
       err.originalError = fetchErr;
