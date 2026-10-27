@@ -1,4 +1,5 @@
 const { uploadBufferToCloudinary } = require("../middlewares/uploadMiddleware");
+const { fixUtf8FileName } = require("../utils/fileEncoding");
 const RoomFile = require("../models/RoomFile");
 const Room = require("../models/Room");
 const User = require("../models/User");
@@ -18,9 +19,10 @@ const uploadFile = async (req, res) => {
       });
     }
 
+    const safeOriginalName = fixUtf8FileName(req.file.originalname);
     const result = await uploadBufferToCloudinary(
       req.file.buffer,
-      req.file.originalname,
+      safeOriginalName,
       req.file.mimetype
     );
 
@@ -131,14 +133,22 @@ const getRoomFiles = async (req, res) => {
       hasPrevPage: page > 1,
     };
 
+    const sanitizedFiles = files.map((f) => {
+      const item = f.toObject ? f.toObject() : { ...f };
+      if (item.fileName) {
+        item.fileName = fixUtf8FileName(item.fileName);
+      }
+      return item;
+    });
+
     return res.status(200).json({
       success: true,
-      count: files.length,
+      count: sanitizedFiles.length,
       data: {
-        files,
+        files: sanitizedFiles,
         pagination: paginationMeta,
       },
-      files,
+      files: sanitizedFiles,
       pagination: paginationMeta,
     });
   } catch (error) {
@@ -170,6 +180,7 @@ const saveRoomFile = async (req, res) => {
     const userDoc = await User.findById(currentUserId).select("name avatar");
     const validSenderId = req.user._id || req.user.id;
     const sender = req.user;
+    const safeFileName = fixUtf8FileName(fileName);
 
     const newRoomFile = await RoomFile.create({
       roomCode,
@@ -177,7 +188,7 @@ const saveRoomFile = async (req, res) => {
       senderName: userDoc?.name || "Thành viên",
       senderAvatar: userDoc?.avatar || "",
       fileUrl,
-      fileName,
+      fileName: safeFileName,
       fileType: fileType || "document",
       fileSize: fileSize || 0,
       publicId: req.body.publicId || "",

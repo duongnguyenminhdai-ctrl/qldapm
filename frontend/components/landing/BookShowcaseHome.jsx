@@ -6,7 +6,7 @@ import Link from "next/link";
 import {
   LogOut, Crown, User, ShieldCheck, Search, X, Users, Plus, Flame, Clock,
   Award, MessageSquare, Send, Paperclip, Loader2, RotateCcw, Minus, UserMinus, Mic, Sparkles,
-  SquareStack, Menu, ChevronRight, ChevronLeft, UserPlus,
+  SquareStack, Menu, ChevronRight, ChevronLeft, UserPlus, Trash2, AlertCircle, FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -15,7 +15,7 @@ import {
   authApi, notificationsApi, messagesApi, titlesApi, uploadApi, setAuthSession, paymentApi,
 } from "@/lib/api";
 import { connectSocket } from "@/lib/socket";
-import { AddFriendDialog, NotificationBell, UnfriendConfirmModal } from "@/components/social";
+import { AddFriendDialog, NotificationBell, UnfriendConfirmModal, DeleteConversationConfirmModal } from "@/components/social";
 import {
   VoiceRecorder,
   AudioPlayer,
@@ -36,7 +36,7 @@ import { PaginationControl } from "@/components/ui/PaginationControl";
 import { TITLE_STYLE_MAP, TITLE_MILESTONES } from "@/lib/titlesConfig";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "@/context/ConfirmContext";
-import FileItemCard from "@/components/files/FileItemCard";
+import FileItemCard, { cleanFileName, formatFileSize } from "@/components/files/FileItemCard";
 import FileUploadBar from "@/components/files/FileUploadBar";
 import ImageLightboxModal from "@/components/files/ImageLightboxModal";
 import "@/components/landing/book-showcase-home.css";
@@ -165,6 +165,9 @@ export default function BookShowcaseHome() {
   const storiesScrollRef = useRef(null);
   const storiesDragState = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false });
 
+  const [deleteTargetConv, setDeleteTargetConv] = useState(null);
+  const [isDeletingConv, setIsDeletingConv] = useState(false);
+
   const handleConfirmUnfriend = useCallback(async () => {
     const friendId = unfriendTarget?._id || unfriendTarget?.id;
     if (!friendId) return;
@@ -172,6 +175,7 @@ export default function BookShowcaseHome() {
     try {
       await friendsApi.unfriend(friendId);
       window.dispatchEvent(new CustomEvent("friend:removed", { detail: { friendId } }));
+      // Dù hủy kết bạn cũng KHÔNG xóa đoạn chat với người dùng đó
       setFriends((prev) => prev.filter((f) => String(f._id || f.id) !== String(friendId)));
       setUnfriendTarget(null);
     } catch (err) {
@@ -180,6 +184,26 @@ export default function BookShowcaseHome() {
       setIsUnfriending(false);
     }
   }, [unfriendTarget]);
+
+  const handleConfirmDeleteConv = useCallback(async () => {
+    if (!deleteTargetConv?._id) return;
+    setIsDeletingConv(true);
+    try {
+      await messagesApi.deleteConversation(deleteTargetConv._id);
+      setConversations((prev) =>
+        prev.filter((c) => String(c._id) !== String(deleteTargetConv._id))
+      );
+      if (String(activeChat?._id) === String(deleteTargetConv._id)) {
+        setActiveChat(null);
+        setChatMessages([]);
+      }
+      setDeleteTargetConv(null);
+    } catch (err) {
+      console.error("Lỗi xóa cuộc trò chuyện:", err);
+    } finally {
+      setIsDeletingConv(false);
+    }
+  }, [deleteTargetConv, activeChat]);
 
   const scrollChatToBottom = useCallback((smooth = true) => {
     if (chatMessagesContainerRef.current) {
@@ -475,7 +499,23 @@ export default function BookShowcaseHome() {
     setChatLoading(true);
     try {
       const [convRes, friendRes] = await Promise.all([messagesApi.getConversations(), friendsApi.list()]);
-      setConversations(convRes?.data?.conversations || []);
+      const rawConvs = convRes?.data?.conversations || [];
+      const myId = String(user?._id || user?.id);
+      const seen = new Set();
+      const uniqueConvs = [];
+      for (const c of rawConvs) {
+        if (c.isGroup) {
+          uniqueConvs.push(c);
+        } else {
+          const partner = c.participants?.find((p) => String(p._id || p.id) !== myId);
+          const pKey = partner ? String(partner._id || partner.id) : String(c._id);
+          if (!seen.has(pKey)) {
+            seen.add(pKey);
+            uniqueConvs.push(c);
+          }
+        }
+      }
+      setConversations(uniqueConvs);
       setFriends(friendRes?.data?.friends || []);
     } catch { } finally { setChatLoading(false); }
   }, [user]);
@@ -510,6 +550,13 @@ export default function BookShowcaseHome() {
         return [conv, ...prev];
       });
     };
+    const handleConvDeleted = ({ conversationId }) => {
+      setConversations((prev) => prev.filter((c) => String(c._id) !== String(conversationId)));
+      if (String(activeChat?._id) === String(conversationId)) {
+        setActiveChat(null);
+        setChatMessages([]);
+      }
+    };
     const handleNewMsg = (msg) => {
       if (String(msg.conversationId) === String(activeChat?._id)) {
         setChatMessages((prev) => {
@@ -538,6 +585,8 @@ export default function BookShowcaseHome() {
     socket.on("friend:status-change", handleFriendStatus);
     socket.on("conversation:updated", handleConvUpdated);
     socket.on("conversation:new", handleNewConv);
+    socket.on("chat:conversation-deleted", handleConvDeleted);
+    socket.on("conversation:deleted", handleConvDeleted);
     socket.on("message:new", handleNewMsg);
     socket.on("chat:message", handleNewMsg);
     socket.on("new_voice_message", handleNewMsg);
@@ -549,6 +598,8 @@ export default function BookShowcaseHome() {
       socket.off("friend:status-change", handleFriendStatus);
       socket.off("conversation:updated", handleConvUpdated);
       socket.off("conversation:new", handleNewConv);
+      socket.off("chat:conversation-deleted", handleConvDeleted);
+      socket.off("conversation:deleted", handleConvDeleted);
       socket.off("message:new", handleNewMsg);
       socket.off("chat:message", handleNewMsg);
       socket.off("new_voice_message", handleNewMsg);
@@ -593,19 +644,27 @@ export default function BookShowcaseHome() {
 
   /* ── Chat: Send message ────────────────────────────────────────────────── */
   const handleSendMessage = async () => {
-    if ((!chatText.trim() && !uploadedFileData) || !activeChat?._id) return;
+    if ((!chatText.trim() && !uploadedFileData) || !activeChat?._id || uploadingFile) return;
     try {
-      const payload = { conversationId: activeChat._id, content: chatText.trim() };
+      const payload = { conversationId: activeChat._id, content: chatText.trim(), text: chatText.trim() };
       if (uploadedFileData) {
         payload.fileUrl = uploadedFileData.fileUrl;
-        payload.fileName = uploadedFileData.fileName;
+        payload.fileName = cleanFileName(uploadedFileData.fileName);
         payload.fileType = uploadedFileData.fileType;
         payload.fileSize = uploadedFileData.fileSize;
       }
-      await messagesApi.sendMessage(payload);
+      const res = await messagesApi.sendMessage(payload);
       setChatText("");
       setUploadedFileData(null);
       setAttachedFile(null);
+      setUploadError(null);
+      if (res?.data?.message) {
+        setChatMessages((prev) => {
+          const mId = res.data.message._id;
+          if (prev.some((m) => String(m._id) === String(mId))) return prev;
+          return [...prev, res.data.message];
+        });
+      }
       setTimeout(() => scrollChatToBottom(true), 50);
     } catch (err) { console.error("Lỗi gửi tin nhắn:", err); }
   };
@@ -702,10 +761,21 @@ export default function BookShowcaseHome() {
     setUploadProgress(0);
     setUploadError(null);
     try {
-      const res = await uploadApi.upload(file, (p) => setUploadProgress(p));
-      setUploadedFileData({ fileUrl: res?.data?.url || res?.data?.fileUrl, fileName: file.name, fileType: file.type, fileSize: file.size });
-    } catch (err) { setUploadError(err.message || "Upload thất bại"); }
-    finally { setUploadingFile(false); }
+      const res = await uploadApi.uploadFile(file, (p) => setUploadProgress(p));
+      const fileData = res?.fileUrl ? res : res?.data || res;
+      setUploadedFileData({
+        fileUrl: fileData.fileUrl || fileData.url,
+        fileName: cleanFileName(fileData.fileName || file.name),
+        fileType: fileData.fileType || file.type,
+        fileSize: fileData.fileSize || file.size,
+      });
+    } catch (err) {
+      console.error("Lỗi upload file:", err);
+      setUploadError(err.message || "Tải lên tệp tin thất bại. Vui lòng thử lại.");
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   /* ── Chat: Recall message ──────────────────────────────────────────────── */
@@ -1414,18 +1484,51 @@ export default function BookShowcaseHome() {
                           const isActive = String(activeChat?._id) === String(conv._id);
                           const lastMsg = conv.lastMessage;
                           return (
-                            <button key={conv._id} onClick={() => setActiveChat(conv)} className={cn("bs-chat-item", isActive && "bs-chat-item-active")}>
-                              <div className="bs-chat-avatar-wrap">
-                                <div className="bs-chat-avatar">{name[0]?.toUpperCase()}</div>
-                                {isOnline && <span className="bs-chat-online-dot" />}
-                              </div>
-                              <div className="bs-chat-item-info">
-                                <span className="bs-chat-item-name">{name}</span>
-                                <span className="bs-chat-item-preview">
-                                  {lastMsg?.isRecalled ? "Tin nhắn đã thu hồi" : lastMsg?.content?.slice(0, 40) || (lastMsg?.fileUrl ? "📎 File" : "")}
-                                </span>
-                              </div>
-                            </button>
+                            <div
+                              key={conv._id}
+                              className={cn(
+                                "bs-chat-item group relative flex items-center justify-between",
+                                isActive && "bs-chat-item-active"
+                              )}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => setActiveChat(conv)}
+                                className="flex items-center gap-2.5 min-w-0 flex-1 text-left bg-transparent border-none p-0 cursor-pointer"
+                              >
+                                <div className="bs-chat-avatar-wrap">
+                                  <div className="bs-chat-avatar">
+                                    {partner?.avatar ? (
+                                      <img src={partner.avatar} alt={name} className="w-full h-full object-cover rounded-full" />
+                                    ) : (
+                                      <span>{name[0]?.toUpperCase() || "?"}</span>
+                                    )}
+                                  </div>
+                                  {isOnline && <span className="bs-chat-online-dot" />}
+                                </div>
+                                <div className="bs-chat-item-info min-w-0 flex-1">
+                                  <span className="bs-chat-item-name truncate">{name}</span>
+                                  <span className="bs-chat-item-preview truncate">
+                                    {lastMsg?.isRecalled
+                                      ? "Tin nhắn đã thu hồi"
+                                      : lastMsg?.content?.slice(0, 40) ||
+                                        (lastMsg?.fileUrl ? `📎 ${cleanFileName(lastMsg?.fileName || "File")}` : "")}
+                                  </span>
+                                </div>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteTargetConv(conv);
+                                }}
+                                title="Xóa đoạn chat này"
+                                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-stone-400 hover:text-rose-400 hover:bg-rose-950/40 transition shrink-0 ml-1 cursor-pointer"
+                                aria-label="Xóa đoạn chat"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           );
                         })}
                         {/* Friends not in conversations */}
@@ -1496,20 +1599,31 @@ export default function BookShowcaseHome() {
                             })()}
                           </div>
                         </div>
-                        {!activeChat.isGroup && (
+                        <div className="flex items-center gap-1 ml-auto">
                           <button
                             type="button"
-                            onClick={() => {
-                              const p = activeChat.participants?.find((p2) => String(p2._id) !== String(user?._id || user?.id));
-                              if (p) setUnfriendTarget(p);
-                            }}
-                            title="Hủy kết bạn"
-                            className="p-1 rounded text-stone-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors ml-auto cursor-pointer"
-                            aria-label="Hủy kết bạn"
+                            onClick={() => setDeleteTargetConv(activeChat)}
+                            title="Xóa đoạn chat này"
+                            className="p-1 rounded text-stone-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
+                            aria-label="Xóa đoạn chat"
                           >
-                            <UserMinus className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        )}
+                          {!activeChat.isGroup && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const p = activeChat.participants?.find((p2) => String(p2._id) !== String(user?._id || user?.id));
+                                if (p) setUnfriendTarget(p);
+                              }}
+                              title="Hủy kết bạn"
+                              className="p-1 rounded text-stone-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
+                              aria-label="Hủy kết bạn"
+                            >
+                              <UserMinus className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div
                         className="bs-chat-messages"
@@ -1550,19 +1664,22 @@ export default function BookShowcaseHome() {
                                             msg.fileType?.startsWith("image/") ? (
                                               <img
                                                 src={msg.fileUrl}
-                                                alt={msg.fileName || "ảnh"}
-                                                className="bs-msg-image"
-                                                onClick={() => setLightboxImage({ src: msg.fileUrl, alt: msg.fileName })}
+                                                alt={cleanFileName(msg.fileName) || "ảnh"}
+                                                className="bs-msg-image cursor-pointer max-h-60 rounded-xl object-cover hover:opacity-95 transition"
+                                                onClick={() => setLightboxImage({ src: msg.fileUrl, alt: cleanFileName(msg.fileName) })}
                                               />
                                             ) : (
-                                              <a
-                                                href={msg.fileUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="bs-msg-file"
-                                              >
-                                                📎 {msg.fileName || "File"}
-                                              </a>
+                                              <div className="my-1 w-full max-w-xs">
+                                                <FileItemCard
+                                                  file={{
+                                                    fileUrl: msg.fileUrl,
+                                                    fileName: cleanFileName(msg.fileName),
+                                                    fileType: msg.fileType,
+                                                    fileSize: msg.fileSize,
+                                                  }}
+                                                  compact={true}
+                                                />
+                                              </div>
                                             )
                                           )}
                                           {textContent && <span className="bs-msg-text">{textContent}</span>}
@@ -1612,14 +1729,46 @@ export default function BookShowcaseHome() {
                         <div ref={chatEndRef} />
                       </div>
                       {/* Upload bar */}
-                      {(attachedFile || uploadedFileData) && (
-                        <div className="bs-chat-upload-bar">
+                      {(attachedFile || uploadedFileData || uploadingFile || uploadError) && (
+                        <div className="bs-chat-upload-bar flex items-center justify-between px-3 py-2 bg-[#2d281f]/80 border-t border-amber-900/30 text-xs">
                           {uploadingFile ? (
-                            <span className="text-xs opacity-60">Đang tải {uploadProgress}%...</span>
+                            <div className="flex items-center gap-2 text-stone-300">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500 shrink-0" />
+                              <span className="truncate max-w-[200px]">
+                                Đang tải lên {cleanFileName(attachedFile?.name)} ({uploadProgress}%)...
+                              </span>
+                            </div>
+                          ) : uploadError ? (
+                            <div className="flex items-center gap-2 text-rose-400">
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate max-w-[240px]">{uploadError}</span>
+                            </div>
                           ) : uploadedFileData ? (
-                            <span className="text-xs text-emerald-400">✓ {uploadedFileData.fileName}</span>
+                            <div className="flex items-center gap-2 text-stone-200">
+                              <FileText className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                              <span className="font-medium text-emerald-400 truncate max-w-[200px]">
+                                {cleanFileName(uploadedFileData.fileName)}
+                              </span>
+                              {uploadedFileData.fileSize > 0 && (
+                                <span className="text-[10px] text-stone-400">
+                                  ({formatFileSize(uploadedFileData.fileSize)})
+                                </span>
+                              )}
+                            </div>
                           ) : null}
-                          <button onClick={() => { setAttachedFile(null); setUploadedFileData(null); }} className="bs-chat-upload-clear"><X className="w-3 h-3" /></button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAttachedFile(null);
+                              setUploadedFileData(null);
+                              setUploadError(null);
+                              if (fileInputRef.current) fileInputRef.current.value = "";
+                            }}
+                            className="bs-chat-upload-clear p-1 rounded-md text-stone-400 hover:text-stone-200 hover:bg-stone-800 transition shrink-0 ml-2 cursor-pointer"
+                            title="Hủy tệp đính kèm"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       )}
                       {/* Input bar */}
@@ -1907,6 +2056,22 @@ export default function BookShowcaseHome() {
         onConfirm={handleConfirmUnfriend}
         friendName={unfriendTarget?.name || "người dùng này"}
         isLoading={isUnfriending}
+      />
+
+      {/* Delete Conversation Confirm Modal */}
+      <DeleteConversationConfirmModal
+        isOpen={Boolean(deleteTargetConv)}
+        onClose={() => !isDeletingConv && setDeleteTargetConv(null)}
+        onConfirm={handleConfirmDeleteConv}
+        conversationName={(() => {
+          if (!deleteTargetConv) return "cuộc trò chuyện này";
+          if (deleteTargetConv.isGroup) return deleteTargetConv.name || "nhóm trò chuyện này";
+          const partner = deleteTargetConv.participants?.find(
+            (p) => String(p._id || p.id) !== String(user?._id || user?.id)
+          );
+          return partner?.name ? `cuộc trò chuyện với ${partner.name}` : "cuộc trò chuyện này";
+        })()}
+        isLoading={isDeletingConv}
       />
     </div>
   );

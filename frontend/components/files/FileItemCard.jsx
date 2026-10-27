@@ -13,6 +13,29 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
+ * Giải mã chuẩn UTF-8 tên file tiếng Việt nếu bị lỗi font / mojibake (Latin1 -> UTF8)
+ */
+export function cleanFileName(name = "") {
+  if (!name || typeof name !== "string") return "Tài liệu";
+  try {
+    const converted = decodeURIComponent(escape(name));
+    if (converted && !converted.includes("\ufffd") && converted !== name) {
+      return converted;
+    }
+  } catch (_) {
+    try {
+      const sanitized = name.replace(/[^\x00-\x7F]/g, (c) => {
+        const code = c.charCodeAt(0);
+        return code <= 255 ? "%" + code.toString(16).padStart(2, "0") : c;
+      });
+      const decoded = decodeURIComponent(sanitized);
+      if (decoded && decoded !== name) return decoded;
+    } catch (__) {}
+  }
+  return name;
+}
+
+/**
  * Format bytes thành định dạng đọc được (KB, MB)
  */
 export function formatFileSize(bytes = 0) {
@@ -27,7 +50,8 @@ export function formatFileSize(bytes = 0) {
  * Lấy Icon và màu sắc tương ứng theo phần mở rộng của file
  */
 export function getFileMeta(fileName = "", fileType = "") {
-  const ext = (fileName.split(".").pop() || fileType || "").toLowerCase();
+  const safeName = cleanFileName(fileName);
+  const ext = (safeName.split(".").pop() || fileType || "").toLowerCase();
 
   if (["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext) || fileType.startsWith("image")) {
     return {
@@ -102,14 +126,18 @@ export function getFileMeta(fileName = "", fileType = "") {
  * Component hiển thị thẻ file đính kèm trong tin nhắn hoặc danh sách tài liệu
  */
 export function FileItemCard(props) {
-  const fileUrl = props.fileUrl || props.file?.fileUrl;
-  const fileName = props.fileName || props.file?.fileName || "Tài liệu";
-  const fileType = props.fileType || props.file?.fileType || "";
+  const fileUrl = props.fileUrl || props.file?.fileUrl || props.file?.url;
+  const fileName = cleanFileName(
+    props.fileName || props.file?.fileName || props.file?.name || props.name || "Tài liệu"
+  );
+  const fileType = props.fileType || props.file?.fileType || props.file?.type || "";
   const fileSize =
     props.fileSize !== undefined
       ? props.fileSize
       : props.file?.fileSize !== undefined
       ? props.file.fileSize
+      : props.file?.size !== undefined
+      ? props.file.size
       : 0;
   const { onImageClick, compact = false, className, isSenderMe = false, showDetails = false } = props;
 

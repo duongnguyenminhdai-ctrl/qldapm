@@ -16,6 +16,7 @@ const cloudinary = require("../config/cloudinary");
 const { createAndSendNotification, sendNotificationToMultiple } = require("../services/notification.service");
 const { calculateStreakUpdate, getVietnamDateString } = require("../utils/streakHelper");
 const { transcribeAudioWithGemini } = require("../services/aiTutor.service");
+const { fixUtf8FileName } = require("../utils/fileEncoding");
 
 // Quản lý trạng thái realtime trong bộ nhớ (Pomodoro + Lịch sử tin nhắn gần nhất)
 const roomStates = new Map();
@@ -1982,6 +1983,10 @@ const initSocket = (io) => {
           fileType: data.fileType || "document",
           fileSize: data.fileSize || 0,
         } : null);
+
+        if (file && file.fileName) {
+          file.fileName = fixUtf8FileName(file.fileName);
+        }
 
         if (!roomCode || (!text && !file)) return;
 

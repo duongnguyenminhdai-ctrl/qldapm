@@ -1,8 +1,10 @@
+const mongoose = require("mongoose");
 const Conversation = require("../models/Conversation");
 const Message = require("../models/Message");
 const User = require("../models/User");
 const { getIo } = require("../config/socketInstance");
 const { createAndSendNotification } = require("../services/notification.service");
+const { fixUtf8FileName } = require("../utils/fileEncoding");
 
 /**
  * GET /api/messages/conversations
@@ -10,7 +12,7 @@ const { createAndSendNotification } = require("../services/notification.service"
  */
 exports.getConversations = async (req, res, next) => {
   try {
-    const currentUserId = req.user.id;
+    const currentUserId = String(req.user.id || req.user._id);
 
     const conversations = await Conversation.find({
       participants: currentUserId,
@@ -19,10 +21,31 @@ exports.getConversations = async (req, res, next) => {
       .populate("lastMessage.sender", "_id name avatar")
       .sort({ updatedAt: -1 });
 
+    // Khử trùng lặp (Deduplicate) các đoạn chat 1-1 với cùng 1 người nếu trước đó bị tạo trùng
+    const seenPartners = new Set();
+    const uniqueConversations = [];
+
+    for (const conv of conversations) {
+      if (conv.isGroup) {
+        uniqueConversations.push(conv);
+      } else {
+        const partner = conv.participants?.find(
+          (p) => String(p._id || p.id) !== currentUserId
+        );
+        const partnerId = partner ? String(partner._id || partner.id) : null;
+        if (!partnerId) {
+          uniqueConversations.push(conv);
+        } else if (!seenPartners.has(partnerId)) {
+          seenPartners.add(partnerId);
+          uniqueConversations.push(conv);
+        }
+      }
+    }
+
     return res.status(200).json({
       success: true,
       data: {
-        conversations: conversations || [],
+        conversations: uniqueConversations,
       },
     });
   } catch (error) {
@@ -91,7 +114,7 @@ exports.createGroup = async (req, res, next) => {
  */
 exports.getOrCreateDirectConversation = async (req, res, next) => {
   try {
-    const currentUserId = req.user.id;
+    const currentUserId = req.user.id || req.user._id;
     const { friendId } = req.body;
 
     if (!friendId) {
@@ -101,17 +124,39 @@ exports.getOrCreateDirectConversation = async (req, res, next) => {
       });
     }
 
+    const u1 = mongoose.Types.ObjectId.isValid(currentUserId)
+      ? new mongoose.Types.ObjectId(currentUserId)
+      : currentUserId;
+    const u2 = mongoose.Types.ObjectId.isValid(friendId)
+      ? new mongoose.Types.ObjectId(friendId)
+      : friendId;
+
+    // Tìm kiếm cuộc trò chuyện 1-1 chính xác chứa cả 2 thành viên
     let conversation = await Conversation.findOne({
       isGroup: false,
-      participants: { $all: [currentUserId, friendId], $size: 2 },
+      participants: { $all: [u1, u2], $size: 2 },
     })
       .populate("participants", "_id name email avatar isOnline lastSeen")
       .populate("lastMessage.sender", "_id name avatar");
 
     if (!conversation) {
+      // Tìm dạng string fallback phòng trường hợp lưu dạng string
+      conversation = await Conversation.findOne({
+        isGroup: false,
+        $and: [
+          { participants: String(currentUserId) },
+          { participants: String(friendId) },
+          { participants: { $size: 2 } },
+        ],
+      })
+        .populate("participants", "_id name email avatar isOnline lastSeen")
+        .populate("lastMessage.sender", "_id name avatar");
+    }
+
+    if (!conversation) {
       const newConv = await Conversation.create({
         isGroup: false,
-        participants: [currentUserId, friendId],
+        participants: [u1, u2],
       });
       conversation = await Conversation.findById(newConv._id)
         .populate("participants", "_id name email avatar isOnline lastSeen")
@@ -223,6 +268,8 @@ exports.sendMessage = async (req, res, next) => {
       });
     }
 
+    const safeFileName = fixUtf8FileName(fileName);
+
     const message = await Message.create({
       conversationId,
       sender: currentUserId,
@@ -232,7 +279,7 @@ exports.sendMessage = async (req, res, next) => {
       duration: Number(duration) || 0,
       image: trimmedImage,
       fileUrl: trimmedFileUrl,
-      fileName: fileName || "",
+      fileName: safeFileName || "",
       fileType: fileType || (messageType === "audio" ? "audio/webm" : ""),
       fileSize: fileSize || 0,
     });
@@ -578,6 +625,60 @@ exports.reactToMessage = async (req, res, next) => {
         reactions: populated.reactions,
         userReaction,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/messages/conversations/:conversationId
+ * Xóa toàn bộ đoạn chat theo phong cách Messenger (Xóa hội thoại và các tin nhắn bên trong)
+ */
+exports.deleteConversation = async (req, res, next) => {
+  try {
+    const currentUserId = String(req.user.id || req.user._id);
+    const { conversationId } = req.params;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu ID cuộc trò chuyện cần xóa.",
+      });
+    }
+
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      participants: currentUserId,
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy cuộc trò chuyện hoặc bạn không có quyền xóa.",
+      });
+    }
+
+    const participantIds = conversation.participants.map(String);
+
+    // Xóa tất cả tin nhắn thuộc conversation này
+    await Message.deleteMany({ conversationId });
+    // Xóa conversation
+    await Conversation.deleteOne({ _id: conversationId });
+
+    // Phát socket realtime tới các thành viên tham gia
+    const io = getIo();
+    if (io) {
+      participantIds.forEach((pId) => {
+        io.to(`user:${pId}`).emit("chat:conversation-deleted", { conversationId });
+        io.to(`user:${pId}`).emit("conversation:deleted", { conversationId });
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Đã xóa cuộc trò chuyện thành công.",
+      data: { conversationId },
     });
   } catch (error) {
     next(error);

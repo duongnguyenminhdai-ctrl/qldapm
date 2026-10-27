@@ -7,6 +7,7 @@ const {
   sendMessage,
   revokeMessage,
   reactToMessage,
+  deleteConversation,
 } = require("../controllers/message.controller");
 const { protect } = require("../middlewares/authMiddleware");
 
@@ -15,6 +16,7 @@ const router = express.Router();
 router.use(protect);
 
 router.get("/conversations", getConversations);
+router.delete("/conversations/:conversationId", deleteConversation);
 router.post("/create-group", createGroup);
 router.post("/direct", getOrCreateDirectConversation);
 router.get("/:conversationId", getMessages);

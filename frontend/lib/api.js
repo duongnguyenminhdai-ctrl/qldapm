@@ -405,6 +405,11 @@ export const messagesApi = {
     apiClient(`/messages/${messageId}/recall`, {
       method: "PATCH",
     }),
+  /** Xóa toàn bộ cuộc trò chuyện tương tự Messenger */
+  deleteConversation: (conversationId) =>
+    apiClient(`/messages/conversations/${conversationId}`, {
+      method: "DELETE",
+    }),
 };
 
 export const paymentApi = {
@@ -617,6 +622,9 @@ export const uploadApi = {
     }
     return data.data;
   },
+
+  /** Alias cho uploadFile */
+  upload: (file, onProgress) => uploadApi.uploadFile(file, onProgress),
 
   /** Lấy danh sách tài liệu phòng học (hỗ trợ search, fileType, sort, pagination) */
   getRoomFiles: (roomCode, params = {}) => {

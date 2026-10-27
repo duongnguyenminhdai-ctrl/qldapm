@@ -41,7 +41,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import VipBadge from "@/components/payment/VipBadge";
 import UserTitleBadge from "@/components/titles/UserTitleBadge";
-import { FileItemCard } from "@/components/files/FileItemCard";
+import { FileItemCard, cleanFileName } from "@/components/files/FileItemCard";
 import { FileUploadBar } from "@/components/files/FileUploadBar";
 import { ImageLightboxModal } from "@/components/files/ImageLightboxModal";
 import { PaginationControl } from "@/components/ui/PaginationControl";
@@ -473,7 +473,10 @@ export function RoomSidePanel({
       });
       const fileData = res?.fileUrl ? res : (res?.data?.fileUrl ? res.data : null);
       if (fileData?.fileUrl) {
-        setChatStagedFile(fileData);
+        setChatStagedFile({
+          ...fileData,
+          fileName: cleanFileName(fileData.fileName || file.name),
+        });
         setChatFileUploading((prev) =>
           prev ? { ...prev, progress: 100, uploading: false } : null
         );
@@ -543,7 +546,10 @@ export function RoomSidePanel({
         setDirectFileUploading(null);
         // Phát sự kiện chia sẻ tệp vào phòng qua onSendMessage
         if (onSendMessage) {
-          onSendMessage("", fileData);
+          onSendMessage("", {
+            ...fileData,
+            fileName: cleanFileName(fileData.fileName || file.name),
+          });
         }
       } else {
         throw new Error(res?.message || res?.data?.message || "Tải lên tệp thất bại");

@@ -68,6 +68,8 @@ const upload = multer({
   fileFilter,
 });
 
+const { fixUtf8FileName } = require("../utils/fileEncoding");
+
 /**
  * Upload buffer lên Cloudinary qua upload_stream
  * @param {Buffer} buffer - File buffer từ req.file.buffer
@@ -77,7 +79,8 @@ const upload = multer({
  */
 const uploadBufferToCloudinary = (buffer, originalname, mimetype) => {
   return new Promise((resolve, reject) => {
-    const ext = path.extname(originalname).toLowerCase();
+    const safeOriginalName = fixUtf8FileName(originalname);
+    const ext = path.extname(safeOriginalName).toLowerCase();
     // SVG chứa XML có thể nhúng script, do đó không xử lý như image thông thường mà lưu dạng raw attachment
     const isImage = mimetype.startsWith("image/") && ext !== ".svg";
     const isAudio =
@@ -86,7 +89,7 @@ const uploadBufferToCloudinary = (buffer, originalname, mimetype) => {
 
     // Làm sạch tên file không dấu/ký tự đặc biệt cho public_id
     const baseName = path
-      .basename(originalname, ext)
+      .basename(safeOriginalName, ext)
       .replace(/[^a-zA-Z0-9_-]/g, "_")
       .slice(0, 40);
 
@@ -117,7 +120,7 @@ const uploadBufferToCloudinary = (buffer, originalname, mimetype) => {
 
         resolve({
           fileUrl: result.secure_url,
-          fileName: originalname,
+          fileName: safeOriginalName,
           fileType: isImage ? "image" : isAudio ? "audio" : ext.replace(".", "") || "document",
           fileSize: result.bytes || buffer.length,
           format: result.format || ext.replace(".", ""),

@@ -12,6 +12,7 @@ import {
   RotateCcw,
   UserMinus,
   Mic,
+  Trash2,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import FileItemCard from "@/components/files/FileItemCard";
 import FileUploadBar from "@/components/files/FileUploadBar";
 import ImageLightboxModal from "@/components/files/ImageLightboxModal";
 import { UnfriendConfirmModal } from "@/components/social/UnfriendConfirmModal";
+import { DeleteConversationConfirmModal } from "@/components/social/DeleteConversationConfirmModal";
 import {
   VoiceRecorder,
   AudioPlayer,
@@ -57,6 +59,8 @@ export function MiniChatBox({ conversation, currentUser, onClose }) {
   const [isRecalling, setIsRecalling] = useState(false);
   const [isUnfriendModalOpen, setIsUnfriendModalOpen] = useState(false);
   const [isUnfriending, setIsUnfriending] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -87,6 +91,20 @@ export function MiniChatBox({ conversation, currentUser, onClose }) {
       console.error("Lỗi khi hủy kết bạn:", err);
     } finally {
       setIsUnfriending(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!conversationId) return;
+    setIsDeleting(true);
+    try {
+      await messagesApi.deleteConversation(conversationId);
+      setIsDeleteModalOpen(false);
+      onClose?.();
+    } catch (err) {
+      console.error("Lỗi xóa cuộc trò chuyện:", err);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -519,6 +537,15 @@ export function MiniChatBox({ conversation, currentUser, onClose }) {
         </div>
 
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setIsDeleteModalOpen(true)}
+            className="rounded-lg p-1 text-zinc-400 hover:bg-rose-950/40 hover:text-rose-400 transition-colors"
+            title="Xóa cuộc trò chuyện này"
+            aria-label="Xóa cuộc trò chuyện"
+          >
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={ICON_STROKE} />
+          </button>
           {!isGroup && partner && (
             <button
               type="button"
@@ -863,6 +890,15 @@ export function MiniChatBox({ conversation, currentUser, onClose }) {
         onConfirm={handleConfirmUnfriend}
         friendName={partner?.name || "người dùng này"}
         isLoading={isUnfriending}
+      />
+
+      {/* Modal xác nhận xóa cuộc trò chuyện */}
+      <DeleteConversationConfirmModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => !isDeleting && setIsDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        conversationName={title ? `cuộc trò chuyện với ${title}` : "cuộc trò chuyện này"}
+        isLoading={isDeleting}
       />
     </div>
   );
