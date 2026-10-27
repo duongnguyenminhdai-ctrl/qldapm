@@ -46,6 +46,7 @@ import UserTitleBadge from "@/components/titles/UserTitleBadge";
 import TitlesModal from "@/components/titles/TitlesModal";
 import VipBadge from "@/components/payment/VipBadge";
 import VipStatusModal from "@/components/vip/VipStatusModal";
+import PricingModal from "@/components/payment/PricingModal";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import CardsTab, { SCHOLAR_CARDS } from "./CardsTab";
 export { SCHOLAR_CARDS };
@@ -75,6 +76,7 @@ export default function ProfileClient() {
   const [loading, setLoading] = useState(true);
   const [isTitlesModalOpen, setIsTitlesModalOpen] = useState(false);
   const [isVipModalOpen, setIsVipModalOpen] = useState(false);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
 
   // Form State: Profile
   const [name, setName] = useState("");
@@ -134,8 +136,13 @@ export default function ProfileClient() {
 
     const handleOpenCards = () => setActiveTab("cards");
     const handleOpenVip = () => setIsVipModalOpen(true);
+    const handleOpenPricing = () => {
+      setIsVipModalOpen(false);
+      setIsPricingOpen(true);
+    };
     window.addEventListener("vsr:open-cards-tab", handleOpenCards);
     window.addEventListener("vsr:open-vip-modal", handleOpenVip);
+    window.addEventListener("vsr:open-pricing-modal", handleOpenPricing);
 
     const cached = getStoredUser();
     if (cached) {
@@ -207,6 +214,12 @@ export default function ProfileClient() {
     } finally {
       setLoadingCards(false);
     }
+
+    return () => {
+      window.removeEventListener("vsr:open-cards-tab", handleOpenCards);
+      window.removeEventListener("vsr:open-vip-modal", handleOpenVip);
+      window.removeEventListener("vsr:open-pricing-modal", handleOpenPricing);
+    };
   }, []);
 
   const currentCardInventory = useMemo(() => {
@@ -515,13 +528,34 @@ export default function ProfileClient() {
           </Link>
 
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-            {(user?.isPro || user?.isVip) && (
-              <VipBadge
-                size="xs"
-                showLabel={true}
-                onClick={() => setIsVipModalOpen(true)}
-                className="cursor-pointer transition-all hover:scale-105 active:scale-95 hover:shadow-md hover:shadow-amber-500/20 text-xs px-2 py-1"
-              />
+            {Boolean(user?.isPro || user?.isVip) ? (
+              <div className="flex items-center gap-1.5">
+                <VipBadge
+                  size="xs"
+                  showLabel={true}
+                  onClick={() => setIsVipModalOpen(true)}
+                  className="cursor-pointer transition-all hover:scale-105 active:scale-95 hover:shadow-md hover:shadow-amber-500/20 text-xs px-2 py-1"
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsPricingOpen(true)}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-serif font-bold text-amber-800 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400/60 transition-all cursor-pointer shadow-xs"
+                  title="Gia hạn thêm thời hạn VIP"
+                >
+                  <Sparkles className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                  <span>Gia hạn VIP</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsPricingOpen(true)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-serif font-bold text-amber-800 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400/60 transition-all cursor-pointer shadow-xs"
+                title="Nâng cấp VIP Học Giả"
+              >
+                <Crown className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                <span>Nâng cấp VIP</span>
+              </button>
             )}
             <UserTitleBadge
               title={user?.equippedTitle || user?.title || "Nhập môn học giả"}
@@ -1013,6 +1047,17 @@ export default function ProfileClient() {
       <VipStatusModal
         isOpen={isVipModalOpen}
         onClose={() => setIsVipModalOpen(false)}
+        user={user}
+        onOpenPricing={() => {
+          setIsVipModalOpen(false);
+          setIsPricingOpen(true);
+        }}
+      />
+
+      {/* Modal bảng giá & Gia hạn VIP */}
+      <PricingModal
+        isOpen={isPricingOpen}
+        onClose={() => setIsPricingOpen(false)}
         user={user}
       />
     </div>

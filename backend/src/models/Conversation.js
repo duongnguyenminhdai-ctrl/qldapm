@@ -32,6 +32,19 @@ const conversationSchema = new mongoose.Schema(
         default: Date.now,
       },
     },
+    clearedBy: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        clearedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   {
     timestamps: true,

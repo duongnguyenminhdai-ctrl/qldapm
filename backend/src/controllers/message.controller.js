@@ -21,11 +21,26 @@ exports.getConversations = async (req, res, next) => {
       .populate("lastMessage.sender", "_id name avatar")
       .sort({ updatedAt: -1 });
 
-    // Khử trùng lặp (Deduplicate) các đoạn chat 1-1 với cùng 1 người nếu trước đó bị tạo trùng
+    // Khử trùng lặp (Deduplicate) các đoạn chat 1-1 và ẩn đoạn chat đã bị user xóa (Messenger logic)
     const seenPartners = new Set();
     const uniqueConversations = [];
 
     for (const conv of conversations) {
+      // Messenger logic: Nếu currentUserId đã xóa đoạn chat này, chỉ hiển thị lại khi có tin nhắn mới sau thời điểm xóa
+      const userClearEntry = conv.clearedBy?.find(
+        (c) => String(c.userId) === currentUserId
+      );
+      if (userClearEntry?.clearedAt) {
+        const clearedTime = new Date(userClearEntry.clearedAt).getTime();
+        const lastMsgTime = conv.lastMessage?.createdAt
+          ? new Date(conv.lastMessage.createdAt).getTime()
+          : 0;
+        // Nếu không có tin nhắn mới nào sau thời điểm xóa -> Ẩn đoạn chat này khỏi danh sách của currentUserId
+        if (lastMsgTime <= clearedTime) {
+          continue;
+        }
+      }
+
       if (conv.isGroup) {
         uniqueConversations.push(conv);
       } else {
@@ -196,7 +211,27 @@ exports.getMessages = async (req, res, next) => {
       });
     }
 
-    const messages = await Message.find({ conversationId })
+    const uIdStr = String(currentUserId);
+    const userObjId = mongoose.Types.ObjectId.isValid(uIdStr)
+      ? new mongoose.Types.ObjectId(uIdStr)
+      : uIdStr;
+
+    // Kiểm tra xem currentUserId có từng bấm xóa đoạn chat này không (Messenger style)
+    const userClearEntry = conversation.clearedBy?.find(
+      (c) => String(c.userId) === uIdStr
+    );
+    const clearedAt = userClearEntry?.clearedAt ? new Date(userClearEntry.clearedAt) : null;
+
+    const query = {
+      conversationId,
+      deletedFor: { $nin: [userObjId, uIdStr] },
+    };
+
+    if (clearedAt) {
+      query.createdAt = { $gt: clearedAt };
+    }
+
+    const messages = await Message.find(query)
       .populate("sender", "_id name email avatar")
       .populate("reactions.userId", "_id name avatar")
       .sort({ createdAt: 1 })
@@ -659,25 +694,48 @@ exports.deleteConversation = async (req, res, next) => {
       });
     }
 
-    const participantIds = conversation.participants.map(String);
+    const now = new Date();
+    const userObjId = mongoose.Types.ObjectId.isValid(currentUserId)
+      ? new mongoose.Types.ObjectId(currentUserId)
+      : currentUserId;
 
-    // Xóa tất cả tin nhắn thuộc conversation này
-    await Message.deleteMany({ conversationId });
-    // Xóa conversation
-    await Conversation.deleteOne({ _id: conversationId });
+    // 1. Cập nhật thời điểm xóa clearedAt cho CHÍNH người xóa trong Conversation (Messenger style)
+    await Conversation.updateOne(
+      { _id: conversationId },
+      {
+        $pull: { clearedBy: { userId: userObjId } },
+      }
+    );
+    await Conversation.updateOne(
+      { _id: conversationId },
+      {
+        $push: {
+          clearedBy: {
+            userId: userObjId,
+            clearedAt: now,
+          },
+        },
+      }
+    );
 
-    // Phát socket realtime tới các thành viên tham gia
+    // 2. Ẩn tất cả tin nhắn hiện có đối với CHÍNH người này (deletedFor)
+    // TUYỆT ĐỐI KHÔNG xóa tin nhắn khỏi database vì đối phương chưa bấm xóa thì tin nhắn cũ vẫn phải còn hiển thị với họ!
+    await Message.updateMany(
+      { conversationId },
+      { $addToSet: { deletedFor: userObjId } }
+    );
+
+    // 3. Chỉ phát socket realtime tới CHÍNH người bấm xóa để đóng / ẩn cuộc hội thoại phía họ
+    // Đối phương hoàn toàn không bị ảnh hưởng, cuộc trò chuyện của đối phương vẫn nguyên vẹn
     const io = getIo();
     if (io) {
-      participantIds.forEach((pId) => {
-        io.to(`user:${pId}`).emit("chat:conversation-deleted", { conversationId });
-        io.to(`user:${pId}`).emit("conversation:deleted", { conversationId });
-      });
+      io.to(`user:${currentUserId}`).emit("chat:conversation-deleted", { conversationId });
+      io.to(`user:${currentUserId}`).emit("conversation:deleted", { conversationId });
     }
 
     return res.status(200).json({
       success: true,
-      message: "Đã xóa cuộc trò chuyện thành công.",
+      message: "Đã xóa đoạn chat phía bạn thành công.",
       data: { conversationId },
     });
   } catch (error) {

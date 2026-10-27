@@ -42,6 +42,7 @@ import UserTitleBadge from "@/components/titles/UserTitleBadge";
 import TitlesModal from "@/components/titles/TitlesModal";
 import VipBadge from "@/components/payment/VipBadge";
 import VipStatusModal from "@/components/vip/VipStatusModal";
+import PricingModal from "@/components/payment/PricingModal";
 
 export function HomeHeader() {
   const router = useRouter();
@@ -50,6 +51,7 @@ export function HomeHeader() {
   const [activeConversation, setActiveConversation] = useState(null);
   const [isTitlesModalOpen, setIsTitlesModalOpen] = useState(false);
   const [isVipModalOpen, setIsVipModalOpen] = useState(false);
+  const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -155,12 +157,17 @@ export function HomeHeader() {
     };
 
     const handleOpenVipModal = () => setIsVipModalOpen(true);
+    const handleOpenPricingModal = () => {
+      setIsVipModalOpen(false);
+      setIsPricingOpen(true);
+    };
 
     window.addEventListener("vsr:title-updated", handleTitleUpdated);
     window.addEventListener("vsr:user-updated", handleUserUpdated);
     window.addEventListener("vsr:open-chat-conversation", handleOpenChat);
     window.addEventListener("vsr:card-drawn", handleCardDrawn);
     window.addEventListener("vsr:open-vip-modal", handleOpenVipModal);
+    window.addEventListener("vsr:open-pricing-modal", handleOpenPricingModal);
 
     const socket = connectSocket();
     const handleSocketTitle = (data) => {
@@ -215,6 +222,7 @@ export function HomeHeader() {
       window.removeEventListener("vsr:open-chat-conversation", handleOpenChat);
       window.removeEventListener("vsr:card-drawn", handleCardDrawn);
       window.removeEventListener("vsr:open-vip-modal", handleOpenVipModal);
+      window.removeEventListener("vsr:open-pricing-modal", handleOpenPricingModal);
       if (socket) {
         socket.off("user:title-updated", handleSocketTitle);
         socket.off("card:updated", handleSocketCard);
@@ -339,20 +347,29 @@ export function HomeHeader() {
 
                   {/* Huy hiệu VIP */}
                   {Boolean(user?.isVip || user?.isPro) ? (
-                    <div className="hidden md:flex items-center">
+                    <div className="hidden md:flex items-center gap-1.5">
                       <VipBadge
                         size="sm"
                         showLabel={true}
                         onClick={() => setIsVipModalOpen(true)}
                         className="cursor-pointer transition-all hover:scale-105 active:scale-95 hover:shadow-md hover:shadow-amber-500/20"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setIsPricingOpen(true)}
+                        className="hidden lg:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-serif font-bold text-amber-800 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400/60 transition-all cursor-pointer shadow-xs"
+                        title="Gia hạn thêm thời hạn VIP"
+                      >
+                        <Sparkles className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
+                        <span>Gia hạn VIP</span>
+                      </button>
                     </div>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setIsVipModalOpen(true)}
+                      onClick={() => setIsPricingOpen(true)}
                       className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-serif font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-500/50 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-xs"
-                      title="Nhấn để xem đặc quyền VIP & cách nhận 30 ngày miễn phí"
+                      title="Nâng cấp VIP Học Giả"
                     >
                       <Crown className="w-3 h-3 text-amber-600 dark:text-amber-400 flex-shrink-0" />
                       <span>VIP</span>
@@ -641,6 +658,17 @@ export function HomeHeader() {
       <VipStatusModal
         isOpen={isVipModalOpen}
         onClose={() => setIsVipModalOpen(false)}
+        user={user}
+        onOpenPricing={() => {
+          setIsVipModalOpen(false);
+          setIsPricingOpen(true);
+        }}
+      />
+
+      {/* Modal bảng giá & Gia hạn VIP */}
+      <PricingModal
+        isOpen={isPricingOpen}
+        onClose={() => setIsPricingOpen(false)}
         user={user}
       />
     </>

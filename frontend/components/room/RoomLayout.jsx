@@ -122,15 +122,20 @@ function participantToMember(p, hostId, currentUserId, raisedHands, focusStatuse
  * Merge micOn/cameraOn/isHandRaised/focusStatus từ bản có sẵn nếu xuất hiện bản sao
  */
 function dedupeMembers(list) {
-  const seen = new Map();
+  if (!Array.isArray(list)) return [];
+  const byId = new Map();
+
   for (const m of list) {
-    if (!m.id) continue;
-    if (seen.has(m.id)) {
-      // Giữ lại micOn/cameraOn/isHandRaised/focusStatus từ bản cũ nếu bản mới không có
-      const existing = seen.get(m.id);
-      seen.set(m.id, {
+    if (!m || !m.id) continue;
+    const key = String(m.id);
+    if (byId.has(key)) {
+      const existing = byId.get(key);
+      byId.set(key, {
         ...existing,
         ...m,
+        isHost: Boolean(existing.isHost || m.isHost),
+        isYou: Boolean(existing.isYou || m.isYou),
+        isPro: Boolean(existing.isPro || m.isPro),
         isTitleVisible:
           m.isTitleVisible !== undefined
             ? m.isTitleVisible
@@ -144,10 +149,60 @@ function dedupeMembers(list) {
         cameraOn: m.cameraOn || existing.cameraOn,
       });
     } else {
-      seen.set(m.id, m);
+      byId.set(key, { ...m });
     }
   }
-  return Array.from(seen.values());
+
+  // Khử trùng cấp 2: Theo email và normalized name để triệt tiêu tài khoản bóng ma / 1 người hiển thị 2 lần
+  const result = [];
+  const seenEmails = new Map(); // email -> index in result
+  const seenNames = new Map();  // name -> index in result
+
+  for (const m of byId.values()) {
+    const emailKey = m.email ? String(m.email).trim().toLowerCase() : "";
+    const nameKey = m.name ? String(m.name).trim().toLowerCase() : "";
+
+    let matchIdx = -1;
+    if (emailKey && seenEmails.has(emailKey)) {
+      matchIdx = seenEmails.get(emailKey);
+    } else if (nameKey && seenNames.has(nameKey)) {
+      const prevMember = result[seenNames.get(nameKey)];
+      // Nếu 1 trong 2 là Host, hoặc có cùng danh hiệu, hoặc 1 trong 2 là isYou: chắc chắn là cùng 1 người
+      if (
+        m.isHost ||
+        prevMember.isHost ||
+        m.isYou ||
+        prevMember.isYou ||
+        (m.equippedTitle && m.equippedTitle === prevMember.equippedTitle)
+      ) {
+        matchIdx = seenNames.get(nameKey);
+      }
+    }
+
+    if (matchIdx >= 0) {
+      const existing = result[matchIdx];
+      result[matchIdx] = {
+        ...existing,
+        ...m,
+        id: existing.isHost ? existing.id : (m.isHost ? m.id : existing.id),
+        isHost: Boolean(existing.isHost || m.isHost),
+        isYou: Boolean(existing.isYou || m.isYou),
+        isPro: Boolean(existing.isPro || m.isPro),
+        micOn: existing.micOn || m.micOn,
+        cameraOn: existing.cameraOn || m.cameraOn,
+        isHandRaised: existing.isHandRaised || m.isHandRaised,
+        focusStatus: existing.focusStatus || m.focusStatus,
+        isTitleVisible: existing.isTitleVisible !== undefined ? existing.isTitleVisible : m.isTitleVisible,
+      };
+    } else {
+      const newIdx = result.length;
+      result.push(m);
+      if (emailKey) seenEmails.set(emailKey, newIdx);
+      if (nameKey) seenNames.set(nameKey, newIdx);
+    }
+  }
+
+  return result;
 }
 
 /**

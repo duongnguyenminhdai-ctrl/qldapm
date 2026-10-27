@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const mongoose = require("mongoose");
 const Room = require("../models/Room");
 const User = require("../models/User");
 const RoomFile = require("../models/RoomFile");
@@ -402,7 +403,20 @@ function checkAndScheduleMaxDuration(roomDoc, io) {
 }
 
 /**
- * Bắt đầu đếm ngược 10 phút khi Host chọn 'Chỉ rời cuộc gọi'
+ * Hủy bộ đếm 10 phút vắng mặt của Host khi Host quay lại phòng
+ */
+function cancelHostAbsenceTimer(roomCode) {
+  if (!roomCode) return;
+  const normalizedCode = roomCode.trim().toUpperCase();
+  if (hostAbsenceTimers.has(normalizedCode)) {
+    clearTimeout(hostAbsenceTimers.get(normalizedCode).timer);
+    hostAbsenceTimers.delete(normalizedCode);
+    console.log(`[Socket] Đã hủy bộ đếm 10 phút vắng mặt của Host phòng ${normalizedCode}`);
+  }
+}
+
+/**
+ * Bắt đầu đếm ngược 10 phút khi Host tạm rời cuộc gọi hoặc mất kết nối
  */
 function startHostAbsenceTimer(roomCode, io, userName = "Chủ phòng") {
   if (!roomCode) return;
@@ -1430,7 +1444,7 @@ const initSocket = (io) => {
         if (uIdStr) {
           const graceKey = `${normalizedCode}_${uIdStr}`;
           if (disconnectGraceTimers.has(graceKey)) {
-            console.log(`[Socket] User [${user?.name || uIdStr}] đã kết nối lại phòng ${normalizedCode} -> Hủy timer ân hạn`);
+            console.log(`[Socket] User [${socket.userData?.name || uIdStr}] đã kết nối lại phòng ${normalizedCode} -> Hủy timer ân hạn`);
             clearTimeout(disconnectGraceTimers.get(graceKey));
             disconnectGraceTimers.delete(graceKey);
           }
@@ -1438,11 +1452,8 @@ const initSocket = (io) => {
 
         // Nếu người vừa tham gia là Host và phòng đang chạy timer 10 phút vắng mặt -> Hủy timer
         if (isHost && (hostAbsenceTimers.has(normalizedCode) || checkRoom.hostLeftAt)) {
-          console.log(`[Socket] Host [${user?.name || uIdStr}] đã quay trở lại phòng ${normalizedCode} -> Hủy bộ đếm timeout vắng mặt.`);
-          if (hostAbsenceTimers.has(normalizedCode)) {
-            clearTimeout(hostAbsenceTimers.get(normalizedCode).timer);
-            hostAbsenceTimers.delete(normalizedCode);
-          }
+          console.log(`[Socket] Host [${socket.userData?.name || uIdStr}] đã quay trở lại phòng ${normalizedCode} -> Hủy bộ đếm timeout vắng mặt.`);
+          cancelHostAbsenceTimer(normalizedCode);
           await Room.updateOne({ roomCode: normalizedCode }, { $set: { hostLeftAt: null } });
           io.to(normalizedCode).emit("room:host-returned", {
             message: "Chủ phòng đã quay trở lại cuộc gọi.",
@@ -1454,18 +1465,21 @@ const initSocket = (io) => {
         // Lên lịch kết thúc phiên học sau 24 giờ tối đa
         checkAndScheduleMaxDuration(checkRoom, io);
 
-        // Cập nhật mảng participants trong database nếu có userId
+        // Cập nhật mảng participants trong database nếu có userId (so sánh ObjectId chuẩn)
         if (userId) {
           try {
+            const userObjId = mongoose.Types.ObjectId.isValid(userId)
+              ? new mongoose.Types.ObjectId(userId)
+              : userId;
             await Room.findOneAndUpdate(
               {
                 roomCode: normalizedCode,
-                "participants.userId": { $ne: userId },
+                "participants.userId": { $ne: userObjId },
               },
               {
                 $push: {
                   participants: {
-                    userId,
+                    userId: userObjId,
                     joinedAt: new Date(),
                   },
                 },
@@ -1476,22 +1490,42 @@ const initSocket = (io) => {
           }
         }
 
-        // Phát sự kiện user-joined tới các thành viên khác trong phòng
-        socket.to(normalizedCode).emit("room:user-joined", user);
+        // Phát sự kiện user-joined tới các thành viên khác trong phòng NGAY LẬP TỨC
+        socket.to(normalizedCode).emit("room:user-joined", socket.userData);
 
         // Lấy thông tin phòng và danh sách participants mới nhất từ DB
         const currentRoom = await Room.findOne({ roomCode: normalizedCode })
           .populate("hostId", "name email avatar isPro title equippedTitle")
           .populate("participants.userId", "name email avatar isPro title equippedTitle");
 
+        // Khử trùng triệt để mảng participants (ngăn ngừa tuyệt đối 1 user hiển thị thành 2 người)
+        if (currentRoom?.participants && Array.isArray(currentRoom.participants)) {
+          const seenPIds = new Set();
+          const cleanParticipants = [];
+          let hadDuplicateParticipants = false;
+          for (const p of currentRoom.participants) {
+            const pUid = String(p.userId?._id || p.userId || "");
+            if (pUid && !seenPIds.has(pUid)) {
+              seenPIds.add(pUid);
+              cleanParticipants.push(p);
+            } else if (pUid) {
+              hadDuplicateParticipants = true;
+            }
+          }
+          if (hadDuplicateParticipants) {
+            Room.updateOne({ _id: currentRoom._id }, { $set: { participants: cleanParticipants } }).catch(() => {});
+          }
+          currentRoom.participants = cleanParticipants;
+        }
+
         // Nếu phòng có nhiều hơn 1 người -> Hủy bỏ timer đếm ngược phòng 1 người
         if (currentRoom && currentRoom.participants && currentRoom.participants.length > 1) {
           cancelAloneCountdown(normalizedCode, io);
         }
 
-        // Gửi danh sách toàn bộ participants cho chính client vừa tham gia
+        // Đồng bộ danh sách toàn bộ participants tới TẤT CẢ các thành viên trong phòng (Zero-latency <50ms)
         if (currentRoom) {
-          socket.emit("room:members-sync", {
+          const membersSyncPayload = {
             roomCode: normalizedCode,
             participants: currentRoom.participants,
             hostId: currentRoom.hostId,
@@ -1500,7 +1534,11 @@ const initSocket = (io) => {
             focusStatuses: Object.fromEntries(roomState.focusStatuses),
             isLocked: Boolean(currentRoom.isLocked),
             pinnedItem: roomState.pinnedItem,
-          });
+          };
+          // Cho chính người vừa vào
+          socket.emit("room:members-sync", membersSyncPayload);
+          // Phát ngay cho mọi thành viên khác đang trong phòng
+          socket.to(normalizedCode).emit("room:members-sync", membersSyncPayload);
           // Đồng bộ số lượng thành viên ra Dashboard realtime
           io.emit("room:members-sync", {
             roomCode: normalizedCode,
@@ -1551,7 +1589,7 @@ const initSocket = (io) => {
         });
 
         console.log(
-          `[Socket] User [${user?.name || userId || socket.id}] da gia nhap phong ${normalizedCode}`
+          `[Socket] User [${socket.userData?.name || userId || socket.id}] da gia nhap phong ${normalizedCode}`
         );
 
         if (typeof cb === "function") {
@@ -3814,43 +3852,38 @@ const initSocket = (io) => {
             if (hasOtherHostSocket) {
               console.log(`[Socket] Host vẫn còn socket khác đang mở trong phòng ${normalizedCode}`);
             } else {
-              // Host rời cuộc gọi, phòng vẫn tiếp tục nếu còn học viên
+              // Host chọn tạm rời cuộc gọi: phòng LUÔN MỞ và kích hoạt đếm ngược 10 phút để Host quay lại
+              console.log(`[Socket] Host [${userName}] tạm rời cuộc gọi phòng ${normalizedCode}. Kích hoạt giữ phòng 10 phút để chờ Host quay lại.`);
+              await Room.updateOne({ roomCode: normalizedCode }, { $set: { hostLeftAt: new Date() } });
+              startHostAbsenceTimer(normalizedCode, io, userName);
+              emitUserLeftSafely(io, normalizedCode, userId, socket.id, userName);
+
               const updatedDoc = await Room.findOne({ roomCode: normalizedCode })
                 .populate("hostId", "name email avatar isPro title equippedTitle")
                 .populate("participants.userId", "name email avatar isPro title equippedTitle");
 
               const remainingCount = updatedDoc?.participants?.length || 0;
-              if (remainingCount === 0) {
-                console.log(`[Socket] Host rời phòng và không còn ai trong phòng ${normalizedCode} -> Đóng và dọn sạch phòng`);
-                await destroyAndCleanupRoom(normalizedCode, io, userName, "Phòng không còn thành viên");
-              } else {
-                console.log(`[Socket] Host [${userName}] chỉ rời cuộc gọi trong phòng ${normalizedCode}. Kích hoạt đếm ngược 10 phút vắng mặt.`);
-                await Room.updateOne({ roomCode: normalizedCode }, { $set: { hostLeftAt: new Date() } });
-                startHostAbsenceTimer(normalizedCode, io, userName);
-                emitUserLeftSafely(io, normalizedCode, userId, socket.id, userName);
-
-                // Nếu chỉ còn đúng 1 người duy nhất trong phòng -> Kích hoạt đếm ngược 10 phút
-                if (remainingCount === 1) {
-                  startAloneCountdown(normalizedCode, io);
-                } else if (remainingCount > 1) {
-                  cancelAloneCountdown(normalizedCode, io);
-                }
-
-                const state = getOrCreateRoomState(normalizedCode);
-                io.to(normalizedCode).emit("room:members-sync", {
-                  roomCode: normalizedCode,
-                  participants: updatedDoc.participants || [],
-                  membersCount: remainingCount,
-                  hostId: updatedDoc.hostId,
-                  titleVisibility: Object.fromEntries(state.titleVisibility),
-                  raisedHands: Object.fromEntries(state.raisedHands),
-                });
-                io.emit("room:members-sync", {
-                  roomCode: normalizedCode,
-                  participants: updatedDoc.participants || [],
-                  membersCount: remainingCount,
-                });
+              // Nếu chỉ còn đúng 1 người duy nhất trong phòng -> Kích hoạt đếm ngược 10 phút
+              if (remainingCount === 1) {
+                startAloneCountdown(normalizedCode, io);
+              } else if (remainingCount > 1) {
+                cancelAloneCountdown(normalizedCode, io);
               }
+
+              const state = getOrCreateRoomState(normalizedCode);
+              io.to(normalizedCode).emit("room:members-sync", {
+                roomCode: normalizedCode,
+                participants: updatedDoc?.participants || [],
+                membersCount: remainingCount,
+                hostId: updatedDoc?.hostId,
+                titleVisibility: Object.fromEntries(state.titleVisibility),
+                raisedHands: Object.fromEntries(state.raisedHands),
+              });
+              io.emit("room:members-sync", {
+                roomCode: normalizedCode,
+                participants: updatedDoc?.participants || [],
+                membersCount: remainingCount,
+              });
             }
           } else {
             // Thông báo thành viên thường rời phòng
@@ -3862,8 +3895,10 @@ const initSocket = (io) => {
                 .populate("hostId", "name email avatar isPro title equippedTitle")
                 .populate("participants.userId", "name email avatar isPro title equippedTitle");
 
-              // Nếu sau khi thành viên rời đi mà phòng không còn ai (0 người) => Đóng và dọn sạch ngay
-              if (!updatedDoc || !updatedDoc.participants || updatedDoc.participants.length === 0) {
+              // Nếu sau khi thành viên rời đi mà phòng không còn ai (0 người):
+              // Nếu Host đang trong thời gian 10 phút vắng mặt, KHÔNG đóng phòng
+              const isHostAbsent = hostAbsenceTimers.has(normalizedCode) || Boolean(updatedDoc?.hostLeftAt);
+              if (!isHostAbsent && (!updatedDoc || !updatedDoc.participants || updatedDoc.participants.length === 0)) {
                 console.log(`[Socket] Phòng ${normalizedCode} không còn ai (0 thành viên) sau khi thành viên rời -> Tự động đóng và dọn sạch`);
                 await destroyAndCleanupRoom(normalizedCode, io, "Hệ thống", "Phòng không còn thành viên");
               } else {
@@ -4648,10 +4683,13 @@ const initSocket = (io) => {
               console.error("[Socket] Lỗi kiểm tra host (grace):", dbErr.message);
             }
 
-            // 3. Nếu là Host và thực sự không còn socket nào trong phòng => Đóng phòng
+            // 3. Nếu là Host và ngắt kết nối (mất Wi-Fi, tắt trình duyệt, sự cố bất khả kháng):
+            // TUYỆT ĐỐI KHÔNG ĐÓNG PHÒNG NGAY! Kích hoạt đếm ngược 10 phút để chủ phòng kịp xoay sở quay lại!
             if (isHost) {
-              console.log(`[Socket] Host [${userName}] thực sự đã rời phòng ${normalizedCode} quá thời gian ân hạn -> Đóng phòng`);
-              await destroyAndCleanupRoom(normalizedCode, io, userName);
+              console.log(`[Socket] Host [${userName}] ngắt kết nối khỏi phòng ${normalizedCode}. Kích hoạt giữ phòng 10 phút để chờ Host quay lại.`);
+              await Room.updateOne({ roomCode: normalizedCode }, { $set: { hostLeftAt: new Date() } });
+              startHostAbsenceTimer(normalizedCode, io, userName);
+              emitUserLeftSafely(io, normalizedCode, uIdStr, socket.id, userName);
               return;
             }
 
@@ -4683,9 +4721,11 @@ const initSocket = (io) => {
                 .populate("hostId", "name email avatar isPro title equippedTitle")
                 .populate("participants.userId", "name email avatar isPro title equippedTitle");
               if (updatedDoc) {
-                // Nếu sau khi ngắt kết nối mà phòng không còn ai => Tự động dọn sạch ngay
-                if (!updatedDoc.participants || updatedDoc.participants.length === 0) {
-                  console.log(`[Socket] Phòng ${normalizedCode} không còn ai (grace timeout), tự động dọn sạch`);
+                // Nếu sau khi ngắt kết nối mà phòng không còn ai:
+                // Nếu Host đang vắng mặt tạm thời (10 phút), KHÔNG dọn sạch phòng
+                const isHostAbsent = hostAbsenceTimers.has(normalizedCode) || Boolean(updatedDoc.hostLeftAt);
+                if (!isHostAbsent && (!updatedDoc.participants || updatedDoc.participants.length === 0)) {
+                  console.log(`[Socket] Phòng ${normalizedCode} không còn ai và Host không ở trạng thái vắng mặt, tự động dọn sạch`);
                   await destroyAndCleanupRoom(normalizedCode, io, "Hệ thống");
                 } else {
                   const state = getOrCreateRoomState(normalizedCode);
@@ -4748,10 +4788,12 @@ initSocket.addRoomNotification = addRoomNotification;
 initSocket.destroyAndCleanupRoom = destroyAndCleanupRoom;
 initSocket.emitUserLeftSafely = emitUserLeftSafely;
 initSocket.startHostAbsenceTimer = startHostAbsenceTimer;
+initSocket.cancelHostAbsenceTimer = cancelHostAbsenceTimer;
 
 module.exports = initSocket;
 module.exports.destroyAndCleanupRoom = destroyAndCleanupRoom;
 module.exports.addRoomNotification = addRoomNotification;
 module.exports.emitUserLeftSafely = emitUserLeftSafely;
 module.exports.startHostAbsenceTimer = startHostAbsenceTimer;
+module.exports.cancelHostAbsenceTimer = cancelHostAbsenceTimer;
 

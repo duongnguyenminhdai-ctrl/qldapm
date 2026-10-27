@@ -107,6 +107,38 @@ export function LiveKitVideoStage({
     };
   });
 
+  // Khử trùng triệt để các member trước khi render để:
+  // 1. Không bao giờ hiển thị 2 tile có cùng track camera WebRTC (hiện tượng 1 người bị nhân đôi webcam)
+  // 2. Không trùng ID hoặc trùng tên thành viên (trừ khi là viewer chính họ)
+  const uniqueEnrichedMembers = [];
+  const seenIds = new Set();
+  const seenTracks = new Set();
+  const seenNames = new Set();
+
+  // Ưu tiên sắp xếp: Bạn (isYou) và Chủ phòng (isHost) luôn được đưa lên đầu để giữ tile chính thức
+  const sortedForDedupe = [...enrichedMembers].sort((a, b) => {
+    if (a.isYou && !b.isYou) return -1;
+    if (!a.isYou && b.isYou) return 1;
+    if (a.isHost && !b.isHost) return -1;
+    if (!a.isHost && b.isHost) return 1;
+    return 0;
+  });
+
+  for (const m of sortedForDedupe) {
+    const idKey = m.id ? String(m.id) : "";
+    const nameKey = m.name ? String(m.name).trim().toLowerCase() : "";
+    const trackSid = m.trackRef?.publication?.trackSid || m.trackRef?.track?.sid || null;
+
+    if (idKey && seenIds.has(idKey)) continue;
+    if (trackSid && seenTracks.has(trackSid)) continue;
+    if (nameKey && seenNames.has(nameKey) && !m.isYou) continue;
+
+    if (idKey) seenIds.add(idKey);
+    if (trackSid) seenTracks.add(trackSid);
+    if (nameKey && !m.isYou) seenNames.add(nameKey);
+    uniqueEnrichedMembers.push(m);
+  }
+
   // BỐ CỤC 1: THEATER LAYOUT (Khi có màn hình chia sẻ)
   if (hasScreenShare) {
     const sharerName =
@@ -147,7 +179,7 @@ export function LiveKitVideoStage({
 
         {/* Dải camera phụ của các thành viên bên dưới */}
         <div className="scrollbar-quiet flex h-28 shrink-0 gap-3 overflow-x-auto pb-1 sm:h-32">
-          {enrichedMembers.map((member) => (
+          {uniqueEnrichedMembers.map((member) => (
             <div key={member.id} className="h-full w-44 shrink-0 sm:w-52">
               <VideoTile
                 member={member}
@@ -162,8 +194,8 @@ export function LiveKitVideoStage({
   }
 
   // BỐ CỤC 2: GRID LAYOUT (Khi không có màn hình chia sẻ)
-  const count = Math.min(Math.max(enrichedMembers.length, 1), 6);
-  const visible = enrichedMembers.slice(0, 6);
+  const count = Math.min(Math.max(uniqueEnrichedMembers.length, 1), 6);
+  const visible = uniqueEnrichedMembers.slice(0, 6);
 
   const gridClass =
     count === 1

@@ -2,6 +2,8 @@ const crypto = require("crypto");
 const User = require("../models/User");
 const Transaction = require("../models/Transaction");
 const ServicePackage = require("../models/ServicePackage");
+const { getIo } = require("../config/socketInstance");
+const { createAndSendNotification } = require("../services/notification.service");
 
 /* =========================================================
  * HELPER: Tạo chữ ký HMAC-SHA512 theo chuẩn chính thức của VNPay
@@ -231,13 +233,13 @@ const vnpayReturn = async (req, res) => {
         });
       }
 
-      // Nâng cấp user lên Pro theo số ngày của gói đã mua (cộng dồn nếu đang còn hạn)
+      // Nâng cấp / Gia hạn user lên Pro theo số ngày của gói đã mua (cộng dồn nếu đang còn hạn)
       const proDays = Number(updatedTx.days) || parseInt(process.env.VNP_PRO_DAYS || "30", 10);
       const userDoc = await User.findById(updatedTx.userId);
-      const baseDate =
+      const isRenewal = Boolean(
         userDoc?.isPro && userDoc?.proExpiresAt && new Date(userDoc.proExpiresAt) > new Date()
-          ? new Date(userDoc.proExpiresAt)
-          : new Date();
+      );
+      const baseDate = isRenewal ? new Date(userDoc.proExpiresAt) : new Date();
 
       const proExpiresAt = new Date(baseDate.getTime() + proDays * 24 * 60 * 60 * 1000);
 
@@ -247,14 +249,51 @@ const vnpayReturn = async (req, res) => {
         title: "VIP",
       });
 
+      // Phát realtime update tới client qua Socket.IO
+      const io = getIo?.();
+      const vipPayload = {
+        isPro: true,
+        isVip: true,
+        proExpiresAt,
+        vipExpiresAt: proExpiresAt,
+        title: "VIP",
+      };
+      if (io) {
+        io.to(`user:${updatedTx.userId}`).emit("user:pro-updated", vipPayload);
+        io.to(`user:${updatedTx.userId}`).emit("user:updated", vipPayload);
+      }
+
+      // Lưu thông báo hệ thống
+      const dateFormatted = new Date(proExpiresAt).toLocaleDateString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+      createAndSendNotification({
+        recipientId: updatedTx.userId,
+        type: "PAYMENT_SUCCESS",
+        title: isRenewal ? "Gia Hạn VIP Thành Công!" : "Nâng Cấp VIP Thành Công!",
+        message: isRenewal
+          ? `Bạn đã gia hạn thành công gói đặc quyền VIP (+${proDays} ngày). Hạn sử dụng được cộng dồn đến ${dateFormatted}.`
+          : `Chúc mừng! Bạn đã nâng cấp thành công gói VIP ${proDays} ngày với đầy đủ đặc quyền học tập cao cấp.`,
+        link: "/profile",
+      }).catch((err) => console.error("[Payment] Notification error:", err));
+
       return res.status(200).json({
         success: true,
-        message: "Thanh toán thành công! Tài khoản đã được nâng cấp lên Pro.",
+        message: isRenewal
+          ? `Gia hạn VIP thành công! Thời hạn đã được cộng dồn thêm ${proDays} ngày.`
+          : "Thanh toán thành công! Tài khoản đã được nâng cấp lên Pro.",
         code: "SUCCESS",
         data: {
           orderId,
           status: "SUCCESS",
+          isRenewal,
+          daysAdded: proDays,
           proExpiresAt,
+          vipExpiresAt: proExpiresAt,
+          isPro: true,
+          isVip: true,
         },
       });
     } else {
@@ -341,10 +380,10 @@ const vnpayIpn = async (req, res) => {
       if (updatedTx) {
         const proDays = Number(updatedTx.days) || parseInt(process.env.VNP_PRO_DAYS || "30", 10);
         const userDoc = await User.findById(updatedTx.userId);
-        const baseDate =
+        const isRenewal = Boolean(
           userDoc?.isPro && userDoc?.proExpiresAt && new Date(userDoc.proExpiresAt) > new Date()
-            ? new Date(userDoc.proExpiresAt)
-            : new Date();
+        );
+        const baseDate = isRenewal ? new Date(userDoc.proExpiresAt) : new Date();
 
         const proExpiresAt = new Date(baseDate.getTime() + proDays * 24 * 60 * 60 * 1000);
 
@@ -353,6 +392,36 @@ const vnpayIpn = async (req, res) => {
           proExpiresAt,
           title: "VIP",
         });
+
+        // Phát realtime update tới client qua Socket.IO
+        const io = getIo?.();
+        const vipPayload = {
+          isPro: true,
+          isVip: true,
+          proExpiresAt,
+          vipExpiresAt: proExpiresAt,
+          title: "VIP",
+        };
+        if (io) {
+          io.to(`user:${updatedTx.userId}`).emit("user:pro-updated", vipPayload);
+          io.to(`user:${updatedTx.userId}`).emit("user:updated", vipPayload);
+        }
+
+        // Lưu thông báo hệ thống
+        const dateFormatted = new Date(proExpiresAt).toLocaleDateString("vi-VN", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+        createAndSendNotification({
+          recipientId: updatedTx.userId,
+          type: "PAYMENT_SUCCESS",
+          title: isRenewal ? "Gia Hạn VIP Thành Công!" : "Nâng Cấp VIP Thành Công!",
+          message: isRenewal
+            ? `Bạn đã gia hạn thành công gói đặc quyền VIP (+${proDays} ngày). Hạn sử dụng được cộng dồn đến ${dateFormatted}.`
+            : `Chúc mừng! Bạn đã nâng cấp thành công gói VIP ${proDays} ngày với đầy đủ đặc quyền học tập cao cấp.`,
+          link: "/profile",
+        }).catch((err) => console.error("[Payment] Notification error:", err));
       }
 
       return res.status(200).json({ RspCode: "00", Message: "Confirm Success" });

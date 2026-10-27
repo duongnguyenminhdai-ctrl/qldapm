@@ -9,6 +9,7 @@ import {
   Check,
   Loader2,
   X,
+  Sparkles,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -136,9 +137,16 @@ export function MessagesPopover({ user, onSelectConversation }) {
       loadData();
     };
 
+    const handleConversationDeleted = ({ conversationId } = {}) => {
+      if (!conversationId) return;
+      setConversations((prev) => prev.filter((c) => String(c._id) !== String(conversationId)));
+    };
+
     socket.on("friend:status-change", handleFriendStatus);
     socket.on("chat:conversation-updated", handleConversationUpdated);
     socket.on("chat:conversation-created", handleNewConversation);
+    socket.on("chat:conversation-deleted", handleConversationDeleted);
+    socket.on("conversation:deleted", handleConversationDeleted);
     socket.on("friend:accepted", handleFriendAccepted);
     socket.on("friend_removed", handleFriendRemoved);
     socket.on("friend:removed", handleFriendRemoved);
@@ -174,6 +182,8 @@ export function MessagesPopover({ user, onSelectConversation }) {
       socket.off("friend:status-change", handleFriendStatus);
       socket.off("chat:conversation-updated", handleConversationUpdated);
       socket.off("chat:conversation-created", handleNewConversation);
+      socket.off("chat:conversation-deleted", handleConversationDeleted);
+      socket.off("conversation:deleted", handleConversationDeleted);
       socket.off("friend:accepted", handleFriendAccepted);
       socket.off("friend_removed", handleFriendRemoved);
       socket.off("friend:removed", handleFriendRemoved);
@@ -333,6 +343,53 @@ export function MessagesPopover({ user, onSelectConversation }) {
 
           {/* Danh sách hội thoại */}
           <div className="max-h-80 overflow-y-auto p-1.5 space-y-1">
+            {/* Ghim V AI Agent ở đầu danh sách */}
+            {(!searchQuery.trim() ||
+              "v ai".includes(searchQuery.toLowerCase()) ||
+              "ai".includes(searchQuery.toLowerCase())) && (
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectConversation({
+                    _id: "v_ai",
+                    isAi: true,
+                    name: "V AI",
+                    isOnline: true,
+                  });
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition hover:bg-zinc-800/60 bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent border border-amber-500/20 group"
+              >
+                <div className="relative shrink-0">
+                  <div className="h-10 w-10 rounded-full p-[2px] bg-gradient-to-tr from-amber-400 via-rose-500 to-cyan-400 shadow-[0_0_10px_rgba(245,158,11,0.3)]">
+                    <div className="w-full h-full rounded-full bg-[#181310] flex items-center justify-center">
+                      <Sparkles className="w-4 h-4 text-amber-300 drop-shadow-[0_0_6px_rgba(251,191,36,0.85)]" />
+                    </div>
+                  </div>
+                  <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full ring-2 ring-zinc-950 bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <p className="truncate text-xs font-serif font-bold text-amber-200">
+                        V AI
+                      </p>
+                      <span className="px-1.5 py-0.2 rounded text-[8px] font-mono font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-400/40 shrink-0">
+                        AI Agent
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-[10px] text-amber-400/80 font-medium">
+                      24/7
+                    </span>
+                  </div>
+                  <p className="truncate text-[11px] text-amber-300/85 mt-0.5">
+                    Trợ lý học tập thông minh 24/7
+                  </p>
+                </div>
+              </button>
+            )}
+
             {filteredConversations.length === 0 ? (
               <div className="py-8 text-center text-zinc-400 dark:text-zinc-500">
                 <MessageSquare className="mx-auto h-7 w-7 text-zinc-300 dark:text-zinc-700 mb-1" strokeWidth={1.5} />

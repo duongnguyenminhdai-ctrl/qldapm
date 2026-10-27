@@ -12,6 +12,9 @@ function PaymentResultContent() {
   const [orderId, setOrderId] = useState("");
   const [proExpiresAt, setProExpiresAt] = useState(null);
 
+  const [isRenewal, setIsRenewal] = useState(false);
+  const [daysAdded, setDaysAdded] = useState(30);
+
   useEffect(() => {
     const vnpResponseCode = searchParams.get("vnp_ResponseCode");
     const vnpTxnRef = searchParams.get("vnp_TxnRef");
@@ -34,15 +37,23 @@ function PaymentResultContent() {
           if (data.data?.proExpiresAt) {
             setProExpiresAt(new Date(data.data.proExpiresAt));
           }
-          // Cập nhật user trong localStorage với thông tin Pro mới
+          if (data.data?.isRenewal) {
+            setIsRenewal(true);
+          }
+          if (data.data?.daysAdded) {
+            setDaysAdded(data.data.daysAdded);
+          }
+          // Cập nhật user trong localStorage với thông tin Pro/VIP mới
           const storedUser = getStoredUser();
           if (storedUser) {
             setAuthSession({
               user: {
                 ...storedUser,
                 isPro: true,
+                isVip: true,
                 title: "VIP",
                 proExpiresAt: data.data?.proExpiresAt,
+                vipExpiresAt: data.data?.proExpiresAt,
               },
             });
           }
@@ -92,11 +103,20 @@ function PaymentResultContent() {
             {/* Title */}
             <div>
               <h1 className="text-2xl font-serif font-bold text-[#f5ede3] mb-1">
-                Nâng cấp thành công!
+                {isRenewal ? "Gia hạn VIP thành công!" : "Nâng cấp thành công!"}
               </h1>
               <p className="text-[#a89b8d] text-sm">
-                Tài khoản của bạn đã được nâng lên hạng{" "}
-                <span className="text-[#e8cca4] font-semibold">VIP</span>
+                {isRenewal ? (
+                  <>
+                    Thời hạn đặc quyền VIP đã được cộng dồn thêm{" "}
+                    <span className="text-[#e8cca4] font-semibold">{daysAdded} ngày</span>.
+                  </>
+                ) : (
+                  <>
+                    Tài khoản của bạn đã được nâng lên hạng{" "}
+                    <span className="text-[#e8cca4] font-semibold">VIP</span>
+                  </>
+                )}
               </p>
             </div>
 

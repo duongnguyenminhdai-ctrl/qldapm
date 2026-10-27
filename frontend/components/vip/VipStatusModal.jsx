@@ -67,6 +67,16 @@ export function VipStatusModal({ isOpen, onClose, user, onOpenPricing }) {
       ? Math.max(0, Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
       : 0;
 
+  const handleOpenPricingModal = () => {
+    onClose();
+    if (onOpenPricing) {
+      onOpenPricing();
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("vsr:open-pricing-modal"));
+    }
+  };
+
   const handleGoToCards = () => {
     onClose();
     if (typeof window !== "undefined") {
@@ -179,17 +189,28 @@ export function VipStatusModal({ isOpen, onClose, user, onOpenPricing }) {
           </div>
 
           {isVipActive ? (
-            <div className="space-y-1.5">
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl sm:text-4xl font-extrabold text-amber-400 font-mono tracking-tight drop-shadow-sm">
-                  {daysLeft}
-                </span>
-                <span className="text-base sm:text-lg font-serif font-semibold text-amber-200">
-                  ngày còn lại
-                </span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl sm:text-4xl font-extrabold text-amber-400 font-mono tracking-tight drop-shadow-sm">
+                    {daysLeft}
+                  </span>
+                  <span className="text-base sm:text-lg font-serif font-semibold text-amber-200">
+                    ngày còn lại
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleOpenPricingModal}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-400/50 bg-amber-500/20 hover:bg-amber-500/35 text-amber-300 text-xs font-serif font-bold tracking-wide hover:scale-105 active:scale-95 transition-all shadow-xs cursor-pointer"
+                  title="Gia hạn thêm ngày vào hạn hiện tại"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                  <span>Gia hạn ngay</span>
+                </button>
               </div>
-              <p className="text-xs font-mono text-[#d8c8b4] flex items-center gap-1.5 pt-1 border-t border-amber-500/20">
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
+              <p className="text-xs font-mono text-[#d8c8b4] flex items-center gap-1.5 pt-1.5 border-t border-amber-500/20">
+                <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>
                   Hạn sử dụng đến:{" "}
                   <strong className="text-amber-300 font-bold">
@@ -203,9 +224,17 @@ export function VipStatusModal({ isOpen, onClose, user, onOpenPricing }) {
               <h4 className="text-base sm:text-lg font-serif font-bold text-[#e6ded2] mb-1">
                 {hasValidDate ? "Gói VIP đã hết hạn" : "Bạn chưa kích hoạt Gói VIP"}
               </h4>
-              <p className="text-xs text-[#a89b8d] leading-relaxed">
-                Đổi ngay 1 bộ 7 lá Thẻ Bài Học Giả trong hồ sơ cá nhân để nhận 30 ngày VIP hoàn toàn miễn phí!
+              <p className="text-xs text-[#a89b8d] leading-relaxed mb-3">
+                Gia hạn gói VIP ngay hoặc đổi 1 bộ 7 lá Thẻ Bài Học Giả để nhận 30 ngày VIP hoàn toàn miễn phí!
               </p>
+              <button
+                type="button"
+                onClick={handleOpenPricingModal}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-amber-400/60 bg-gradient-to-r from-amber-500 to-amber-600 text-stone-950 text-xs font-serif font-bold hover:brightness-110 active:scale-95 transition shadow cursor-pointer"
+              >
+                <Crown className="w-3.5 h-3.5" />
+                <span>Kích hoạt VIP ngay</span>
+              </button>
             </div>
           )}
         </div>
@@ -247,27 +276,40 @@ export function VipStatusModal({ isOpen, onClose, user, onOpenPricing }) {
           <div className="flex items-start gap-2.5">
             <Gift className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <p className="text-xs text-amber-200 leading-relaxed font-sans">
-              <strong>Gợi ý:</strong> Thu thập đủ bộ 7 lá <strong>Thẻ Bài Học Giả</strong> để tích lũy thêm 30 ngày VIP miễn phí không giới hạn!
+              <strong>Gợi ý:</strong> Thu thập đủ bộ 7 lá <strong>Thẻ Bài Học Giả</strong> để tích lũy thêm 30 ngày VIP miễn phí hoặc bấm <strong>Gia hạn Gói VIP</strong> để cộng dồn thêm hạn bất cứ lúc nào!
             </p>
           </div>
         </div>
 
         {/* 5. Cụm nút hành động dưới đáy */}
         <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5 shrink-0">
+          {/* Nút hành động chính: Gia hạn Gói VIP */}
+          <button
+            type="button"
+            onClick={handleOpenPricingModal}
+            className="w-full sm:flex-1 py-3 px-4 rounded-xl border border-amber-400/80 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 text-stone-950 text-xs font-serif font-bold tracking-wide hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-amber-500/25 cursor-pointer flex items-center justify-center gap-2"
+          >
+            <Crown className="w-4 h-4" />
+            <span>{isVipActive ? "Gia hạn Gói VIP" : "Mua Gói VIP"}</span>
+            <Sparkles className="w-3.5 h-3.5 opacity-90" />
+          </button>
+
+          {/* Nút phụ: Đến Kho Thẻ Bài */}
           <button
             type="button"
             onClick={handleGoToCards}
-            className="w-full sm:flex-1 py-3 px-4 rounded-xl border border-amber-400/60 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600 text-stone-950 text-xs font-serif font-bold tracking-wide hover:brightness-110 active:scale-95 transition-all shadow-md shadow-amber-500/20 cursor-pointer flex items-center justify-center gap-2"
+            className="w-full sm:w-auto py-3 px-3.5 rounded-xl border border-amber-500/35 bg-[#201b18] hover:bg-[#2e2621] text-[#f5ede3] text-xs font-medium hover:border-amber-400/60 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+            title="Đổi 7 lá bài lấy 30 ngày VIP miễn phí"
           >
-            <Layers className="w-4 h-4" />
-            <span>Đến Kho Thẻ Bài</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            <Layers className="w-3.5 h-3.5 text-amber-400" />
+            <span>Kho Thẻ Bài</span>
           </button>
 
+          {/* Nút Đóng */}
           <button
             type="button"
             onClick={onClose}
-            className="w-full sm:w-28 py-3 px-4 rounded-xl border border-amber-500/30 bg-[#201b18] text-xs font-semibold text-[#f5ede3] hover:bg-[#2b231d] hover:border-amber-400/50 transition cursor-pointer"
+            className="w-full sm:w-20 py-3 px-3 rounded-xl border border-stone-800 bg-[#161210] text-xs font-medium text-[#a89b8d] hover:text-[#f5ede3] hover:bg-[#201b18] hover:border-stone-700 transition cursor-pointer"
           >
             Đóng
           </button>

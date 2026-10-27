@@ -13,6 +13,7 @@ import {
   UserMinus,
   Mic,
   Trash2,
+  Sparkles,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import { ICON_STROKE } from "@/lib/constants";
 import FileItemCard from "@/components/files/FileItemCard";
 import FileUploadBar from "@/components/files/FileUploadBar";
 import ImageLightboxModal from "@/components/files/ImageLightboxModal";
+import { VAIChatSection } from "@/components/ai/VAIChatSection";
 import { UnfriendConfirmModal } from "@/components/social/UnfriendConfirmModal";
 import { DeleteConversationConfirmModal } from "@/components/social/DeleteConversationConfirmModal";
 import {
@@ -43,7 +45,7 @@ import {
 } from "@/components/ui/dialog";
 import { useConfirm } from "@/context/ConfirmContext";
 
-export function MiniChatBox({ conversation, currentUser, onClose }) {
+export function MiniChatBox({ conversation, currentUser, onClose, onOpenPricing }) {
   const confirm = useConfirm();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
@@ -125,7 +127,7 @@ export function MiniChatBox({ conversation, currentUser, onClose }) {
 
   // Load tin nhắn ban đầu
   useEffect(() => {
-    if (!conversationId) return;
+    if (!conversationId || conversation?.isAi) return;
 
     let isSubscribed = true;
     const loadMessages = async () => {
@@ -494,6 +496,75 @@ export function MiniChatBox({ conversation, currentUser, onClose }) {
     }
   };
 
+  if (conversation?.isAi) {
+    return (
+      <div
+        className={cn(
+          "fixed z-50 flex flex-col border border-amber-500/30 bg-[#16120f]/98 shadow-2xl backdrop-blur-md transition-all duration-200 overflow-hidden",
+          "w-[94vw] max-h-[85dvh] mx-auto rounded-2xl inset-x-0 bottom-2.5 sm:inset-x-auto sm:right-6 sm:bottom-0 sm:w-96 sm:mx-0 sm:rounded-b-none",
+          isMinimized ? "h-12" : "h-[80vh] sm:h-[30rem]"
+        )}
+      >
+        {isMinimized ? (
+          <div className="flex h-12 items-center justify-between border-b border-amber-500/20 px-3.5 bg-gradient-to-r from-amber-500/10 via-transparent to-transparent">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="relative shrink-0">
+                <div className="w-7 h-7 rounded-full p-[1.5px] bg-gradient-to-tr from-amber-400 via-rose-500 to-cyan-400 shadow-[0_0_8px_rgba(245,158,11,0.35)]">
+                  <div className="w-full h-full rounded-full bg-[#181310] flex items-center justify-center">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300 drop-shadow-[0_0_4px_rgba(251,191,36,0.85)]" />
+                  </div>
+                </div>
+                <span className="absolute bottom-0 right-0 h-2 w-2 rounded-full ring-1 ring-zinc-950 bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]" />
+              </div>
+              <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                <p className="truncate text-xs font-serif font-bold text-amber-200">V AI</p>
+                <span className="px-1.5 py-0.2 rounded text-[8px] font-mono font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-400/40">
+                  AI Agent
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setIsMinimized(false)}
+                className="rounded-lg p-1 text-stone-400 hover:bg-stone-800 hover:text-stone-100 cursor-pointer"
+                title="Mở rộng cửa sổ"
+              >
+                <Minus className="h-3.5 w-3.5" strokeWidth={ICON_STROKE} />
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg p-1 text-stone-400 hover:bg-stone-800 hover:text-stone-100 cursor-pointer"
+                title="Đóng cửa sổ"
+              >
+                <X className="h-3.5 w-3.5" strokeWidth={ICON_STROKE} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <VAIChatSection
+            user={currentUser}
+            onOpenPricing={onOpenPricing}
+            onClose={onClose}
+            headerActions={
+              <button
+                type="button"
+                onClick={() => setIsMinimized(true)}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-100 hover:bg-stone-800/80 transition-colors cursor-pointer"
+                title="Thu nhỏ cửa sổ"
+                aria-label="Thu nhỏ cửa sổ"
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+            }
+            className="flex-1 min-h-0 border-0 rounded-2xl sm:rounded-b-none"
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       ref={chatContainerRef}
@@ -735,6 +806,9 @@ export function MiniChatBox({ conversation, currentUser, onClose }) {
           {/* Thanh Preview file trước khi gửi */}
           <FileUploadBar
             file={attachedFile}
+            fileName={attachedFile?.name || uploadedFileData?.fileName}
+            fileSize={attachedFile?.size || uploadedFileData?.fileSize}
+            fileType={attachedFile?.type || uploadedFileData?.fileType}
             uploading={uploadingFile}
             progress={uploadProgress}
             uploadedData={uploadedFileData}
@@ -805,7 +879,11 @@ export function MiniChatBox({ conversation, currentUser, onClose }) {
                     document.body.scrollTop = 0;
                   }
                 }}
-                placeholder="Nhập tin nhắn (Ctrl+V để dán ảnh)..."
+                placeholder={
+                  attachedFile || uploadedFileData
+                    ? "Thêm ghi chú cho tệp đính kèm..."
+                    : "Nhập tin nhắn (Ctrl+V để dán ảnh)..."
+                }
                 className="flex-1 rounded-xl border border-zinc-800/80 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
               />
 

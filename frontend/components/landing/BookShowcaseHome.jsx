@@ -39,6 +39,7 @@ import { useConfirm } from "@/context/ConfirmContext";
 import FileItemCard, { cleanFileName, formatFileSize } from "@/components/files/FileItemCard";
 import FileUploadBar from "@/components/files/FileUploadBar";
 import ImageLightboxModal from "@/components/files/ImageLightboxModal";
+import { VAIChatSection } from "@/components/ai/VAIChatSection";
 import "@/components/landing/book-showcase-home.css";
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -127,6 +128,15 @@ export default function BookShowcaseHome() {
       setSelectedBook(bookQuery);
     }
   }, [bookQuery]);
+
+  useEffect(() => {
+    const handleOpenPricing = () => {
+      setIsVipModalOpen(false);
+      setIsPricingOpen(true);
+    };
+    window.addEventListener("vsr:open-pricing-modal", handleOpenPricing);
+    return () => window.removeEventListener("vsr:open-pricing-modal", handleOpenPricing);
+  }, []);
 
   /* ── Parallax ref ──────────────────────────────────────────────────────── */
   const stageRef = useRef(null);
@@ -522,6 +532,12 @@ export default function BookShowcaseHome() {
 
   useEffect(() => { if (selectedBook === "chat" && user) loadChatData(); }, [selectedBook, user, loadChatData]);
 
+  useEffect(() => {
+    const handleOpenPricing = () => setIsPricingOpen(true);
+    window.addEventListener("vsr:open-pricing-modal", handleOpenPricing);
+    return () => window.removeEventListener("vsr:open-pricing-modal", handleOpenPricing);
+  }, []);
+
   /* ── Chat: Socket listeners ────────────────────────────────────────────── */
   useEffect(() => {
     const socket = connectSocket();
@@ -612,7 +628,7 @@ export default function BookShowcaseHome() {
 
   /* ── Chat: Load messages for active conversation ───────────────────────── */
   useEffect(() => {
-    if (!activeChat?._id) return;
+    if (!activeChat?._id || activeChat.isAi) return;
     let sub = true;
     setChatMsgLoading(true);
     messagesApi.getMessages(activeChat._id).then((res) => {
@@ -795,6 +811,16 @@ export default function BookShowcaseHome() {
       if (res?.data?.conversation) setActiveChat(res.data.conversation);
     } catch { }
   };
+
+  /* ── Chat: Open V AI Agent chat ────────────────────────────────────────── */
+  const handleOpenVAIChat = useCallback(() => {
+    setActiveChat({
+      _id: "v_ai",
+      isAi: true,
+      name: "V AI",
+      isOnline: true,
+    });
+  }, []);
 
   /* ── Titles: equip ─────────────────────────────────────────────────────── */
   const handleEquipTitle = async (titleId, titleName) => {
@@ -1075,14 +1101,25 @@ export default function BookShowcaseHome() {
                 <AddFriendDialog />
                 <NotificationBell user={user} />
                 {user.isPro || user.isVip ? (
-                  <VipBadge
-                    size="sm"
-                    showLabel={true}
-                    onClick={() => setIsVipModalOpen(true)}
-                    className="cursor-pointer transition-all hover:scale-105 active:scale-95 hover:shadow-md hover:shadow-amber-500/20"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <VipBadge
+                      size="sm"
+                      showLabel={true}
+                      onClick={() => setIsVipModalOpen(true)}
+                      className="cursor-pointer transition-all hover:scale-105 active:scale-95 hover:shadow-md hover:shadow-amber-500/20"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsPricingOpen(true)}
+                      className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-serif font-bold text-amber-300 bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/30 hover:border-amber-400/60 transition-all cursor-pointer shadow-xs"
+                      title="Gia hạn thêm thời hạn VIP"
+                    >
+                      <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                      <span>Gia hạn VIP</span>
+                    </button>
+                  </div>
                 ) : (
-                  <button onClick={() => setIsVipModalOpen(true)} className="bs-upgrade-btn" title="Xem đặc quyền VIP & Hạn dùng">
+                  <button onClick={() => setIsPricingOpen(true)} className="bs-upgrade-btn" title="Nâng cấp VIP Học Giả">
                     <Crown className="w-3.5 h-3.5" />
                     <span>Nâng cấp Pro</span>
                   </button>
@@ -1394,87 +1431,154 @@ export default function BookShowcaseHome() {
                     />
                   </div>
 
-                  {/* Messenger-style Active / Online Friends Bar */}
-                  {friends.length > 0 && (
-                    <div className="bs-chat-stories-bar">
-                      <div
-                        ref={storiesScrollRef}
-                        className="bs-chat-stories-scroll"
-                        onMouseDown={(e) => {
-                          storiesDragState.current = {
-                            isDown: true,
-                            startX: e.pageX - e.currentTarget.offsetLeft,
-                            scrollLeft: e.currentTarget.scrollLeft,
-                            moved: false,
-                          };
-                        }}
-                        onMouseLeave={() => {
-                          if (storiesDragState.current.isDown) {
-                            storiesDragState.current.isDown = false;
-                          }
-                        }}
-                        onMouseUp={() => {
+                  {/* Messenger-style Active / Online Friends Bar (Kèm V AI Agent đầu tiên) */}
+                  <div className="bs-chat-stories-bar">
+                    <div
+                      ref={storiesScrollRef}
+                      className="bs-chat-stories-scroll"
+                      onMouseDown={(e) => {
+                        storiesDragState.current = {
+                          isDown: true,
+                          startX: e.pageX - e.currentTarget.offsetLeft,
+                          scrollLeft: e.currentTarget.scrollLeft,
+                          moved: false,
+                        };
+                      }}
+                      onMouseLeave={() => {
+                        if (storiesDragState.current.isDown) {
                           storiesDragState.current.isDown = false;
+                        }
+                      }}
+                      onMouseUp={() => {
+                        storiesDragState.current.isDown = false;
+                      }}
+                      onMouseMove={(e) => {
+                        if (!storiesDragState.current.isDown) return;
+                        e.preventDefault();
+                        const x = e.pageX - e.currentTarget.offsetLeft;
+                        const walk = (x - storiesDragState.current.startX) * 1.5;
+                        if (Math.abs(walk) > 4) {
+                          storiesDragState.current.moved = true;
+                        }
+                        e.currentTarget.scrollLeft = storiesDragState.current.scrollLeft - walk;
+                      }}
+                      onWheel={(e) => {
+                        if (e.deltaY !== 0) {
+                          e.stopPropagation();
+                          e.currentTarget.scrollLeft += e.deltaY;
+                        }
+                      }}
+                    >
+                      {/* V AI Story Item phong cách Meta AI */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (storiesDragState.current.moved) return;
+                          handleOpenVAIChat();
                         }}
-                        onMouseMove={(e) => {
-                          if (!storiesDragState.current.isDown) return;
-                          e.preventDefault();
-                          const x = e.pageX - e.currentTarget.offsetLeft;
-                          const walk = (x - storiesDragState.current.startX) * 1.5;
-                          if (Math.abs(walk) > 4) {
-                            storiesDragState.current.moved = true;
-                          }
-                          e.currentTarget.scrollLeft = storiesDragState.current.scrollLeft - walk;
-                        }}
-                        onWheel={(e) => {
-                          if (e.deltaY !== 0) {
-                            e.stopPropagation();
-                            e.currentTarget.scrollLeft += e.deltaY;
-                          }
-                        }}
+                        className={cn(
+                          "bs-chat-story-item shrink-0 group transition-all cursor-pointer",
+                          activeChat?.isAi && "scale-105"
+                        )}
+                        title="Trò chuyện cùng V AI (Trợ lý học tập thông minh)"
                       >
-                        {friends.map((f) => {
-                          const isOnline = f.isOnline;
-                          return (
-                            <button
-                              key={`story-${f._id || f.id}`}
-                              type="button"
-                              onClick={() => {
-                                if (storiesDragState.current.moved) return;
-                                handleOpenDirectChat(f);
-                              }}
-                              className="bs-chat-story-item"
-                              title={`Nhắn tin với ${f.name}`}
-                            >
-                              <div className="bs-chat-story-avatar-wrap">
-                                <div className="bs-chat-story-avatar">
-                                  {f.avatar ? (
-                                    <img src={f.avatar} alt={f.name} className="w-full h-full object-cover rounded-full" />
-                                  ) : (
-                                    <span>{f.name?.[0]?.toUpperCase() || "?"}</span>
-                                  )}
-                                </div>
-                                {isOnline && <span className="bs-chat-story-online-dot" />}
+                        <div className="bs-chat-story-avatar-wrap">
+                          <div className={cn(
+                            "relative w-11 h-11 rounded-full p-[2px] transition-all",
+                            activeChat?.isAi
+                              ? "bg-gradient-to-tr from-amber-400 via-rose-500 to-cyan-400 ring-2 ring-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.5)]"
+                              : "bg-gradient-to-tr from-amber-400 via-rose-500 to-cyan-400 group-hover:scale-105 shadow-[0_0_8px_rgba(245,158,11,0.3)]"
+                          )}>
+                            <div className="w-full h-full rounded-full bg-[#181310] flex items-center justify-center">
+                              <Sparkles className="w-5 h-5 text-amber-300 drop-shadow-[0_0_6px_rgba(251,191,36,0.9)] animate-pulse" />
+                            </div>
+                          </div>
+                          <span className="bs-chat-story-online-dot bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+                        </div>
+                        <span className="bs-chat-story-name font-serif font-bold text-amber-300">
+                          V AI
+                        </span>
+                      </button>
+
+                      {friends.map((f) => {
+                        const isOnline = f.isOnline;
+                        return (
+                          <button
+                            key={`story-${f._id || f.id}`}
+                            type="button"
+                            onClick={() => {
+                              if (storiesDragState.current.moved) return;
+                              handleOpenDirectChat(f);
+                            }}
+                            className="bs-chat-story-item"
+                            title={`Nhắn tin với ${f.name}`}
+                          >
+                            <div className="bs-chat-story-avatar-wrap">
+                              <div className="bs-chat-story-avatar">
+                                {f.avatar ? (
+                                  <img src={f.avatar} alt={f.name} className="w-full h-full object-cover rounded-full" />
+                                ) : (
+                                  <span>{f.name?.[0]?.toUpperCase() || "?"}</span>
+                                )}
                               </div>
-                              <span className="bs-chat-story-name">
-                                {f.name?.trim().split(" ").slice(-1)[0] || f.name}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                              {isOnline && <span className="bs-chat-story-online-dot" />}
+                            </div>
+                            <span className="bs-chat-story-name">
+                              {f.name?.trim().split(" ").slice(-1)[0] || f.name}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
-                  )}
+                  </div>
 
                   <div
                     className="bs-chat-list"
                     onWheel={(e) => e.stopPropagation()}
                     onPointerMove={(e) => e.stopPropagation()}
                   >
+                    {/* Ghim V AI Agent ở đầu danh sách đoạn chat */}
+                    {(!chatSearch || "v ai".includes(chatSearch.toLowerCase()) || "ai".includes(chatSearch.toLowerCase())) && (
+                      <div
+                        className={cn(
+                          "bs-chat-item group relative flex items-center justify-between border border-amber-500/20 bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-transparent mb-1 rounded-xl transition-all",
+                          activeChat?.isAi && "bs-chat-item-active ring-1 ring-amber-400/50"
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={handleOpenVAIChat}
+                          className="flex items-center gap-2.5 min-w-0 flex-1 text-left bg-transparent border-none p-0 cursor-pointer"
+                        >
+                          <div className="bs-chat-avatar-wrap relative shrink-0">
+                            <div className="w-9 h-9 rounded-full p-[2px] bg-gradient-to-tr from-amber-400 via-rose-500 to-cyan-400 shadow-[0_0_10px_rgba(245,158,11,0.35)]">
+                              <div className="w-full h-full rounded-full bg-[#181310] flex items-center justify-center">
+                                <Sparkles className="w-4 h-4 text-amber-300 drop-shadow-[0_0_6px_rgba(251,191,36,0.85)]" />
+                              </div>
+                            </div>
+                            <span className="bs-chat-online-dot bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]" />
+                          </div>
+                          <div className="bs-chat-item-info min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="bs-chat-item-name font-serif font-bold text-amber-200">
+                                V AI
+                              </span>
+                              <span className="px-1.5 py-0.2 rounded text-[8px] font-mono font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-400/40">
+                                AI Agent
+                              </span>
+                            </div>
+                            <span className="bs-chat-item-preview truncate text-amber-300/85">
+                              Trợ lý học tập thông minh 24/7
+                            </span>
+                          </div>
+                        </button>
+                      </div>
+                    )}
+
                     {chatLoading ? (
                       <div className="bs-chat-loading">Đang tải...</div>
                     ) : filteredConversations.length === 0 && friends.length === 0 ? (
-                      <div className="bs-chat-empty">Chưa có cuộc trò chuyện nào.</div>
+                      <div className="bs-chat-empty">Chưa có cuộc trò chuyện nào khác.</div>
                     ) : (
                       <>
                         {filteredConversations.map((conv) => {
@@ -1555,6 +1659,13 @@ export default function BookShowcaseHome() {
                       <MessageSquare className="w-8 h-8 opacity-20" />
                       <p>Chọn một cuộc trò chuyện</p>
                     </div>
+                  ) : activeChat?.isAi ? (
+                    <VAIChatSection
+                      user={user}
+                      onOpenPricing={() => setIsPricingOpen(true)}
+                      onBack={() => setActiveChat(null)}
+                      className="h-full rounded-r-2xl"
+                    />
                   ) : (
                     <>
                       <div className="bs-chat-main-header flex items-center justify-between">
@@ -1728,47 +1839,25 @@ export default function BookShowcaseHome() {
                         )}
                         <div ref={chatEndRef} />
                       </div>
-                      {/* Upload bar */}
+                      {/* Upload bar đồng bộ hoàn toàn với phòng học */}
                       {(attachedFile || uploadedFileData || uploadingFile || uploadError) && (
-                        <div className="bs-chat-upload-bar flex items-center justify-between px-3 py-2 bg-[#2d281f]/80 border-t border-amber-900/30 text-xs">
-                          {uploadingFile ? (
-                            <div className="flex items-center gap-2 text-stone-300">
-                              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500 shrink-0" />
-                              <span className="truncate max-w-[200px]">
-                                Đang tải lên {cleanFileName(attachedFile?.name)} ({uploadProgress}%)...
-                              </span>
-                            </div>
-                          ) : uploadError ? (
-                            <div className="flex items-center gap-2 text-rose-400">
-                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate max-w-[240px]">{uploadError}</span>
-                            </div>
-                          ) : uploadedFileData ? (
-                            <div className="flex items-center gap-2 text-stone-200">
-                              <FileText className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                              <span className="font-medium text-emerald-400 truncate max-w-[200px]">
-                                {cleanFileName(uploadedFileData.fileName)}
-                              </span>
-                              {uploadedFileData.fileSize > 0 && (
-                                <span className="text-[10px] text-stone-400">
-                                  ({formatFileSize(uploadedFileData.fileSize)})
-                                </span>
-                              )}
-                            </div>
-                          ) : null}
-                          <button
-                            type="button"
-                            onClick={() => {
+                        <div className="px-3 pt-2.5 pb-1 bg-[#1c1815]/80 border-t border-amber-900/20 backdrop-blur-md">
+                          <FileUploadBar
+                            file={attachedFile}
+                            fileName={attachedFile?.name || uploadedFileData?.fileName}
+                            fileSize={attachedFile?.size || uploadedFileData?.fileSize}
+                            fileType={attachedFile?.type || uploadedFileData?.fileType}
+                            uploading={uploadingFile}
+                            progress={uploadProgress}
+                            uploadedData={uploadedFileData}
+                            error={uploadError}
+                            onRemove={() => {
                               setAttachedFile(null);
                               setUploadedFileData(null);
                               setUploadError(null);
                               if (fileInputRef.current) fileInputRef.current.value = "";
                             }}
-                            className="bs-chat-upload-clear p-1 rounded-md text-stone-400 hover:text-stone-200 hover:bg-stone-800 transition shrink-0 ml-2 cursor-pointer"
-                            title="Hủy tệp đính kèm"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
+                          />
                         </div>
                       )}
                       {/* Input bar */}
@@ -1820,7 +1909,11 @@ export default function BookShowcaseHome() {
                                   handleSendMessage();
                                 }
                               }}
-                              placeholder="Nhắn tin..."
+                              placeholder={
+                                uploadedFileData || attachedFile
+                                  ? "Thêm ghi chú cho tệp đính kèm..."
+                                  : "Nhắn tin..."
+                              }
                               className="bs-chat-text-input"
                             />
                             <button
@@ -2025,7 +2118,15 @@ export default function BookShowcaseHome() {
 
       {/* ── MODALS ─────────────────────────────────────────────────────────── */}
       <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} user={user} />
-      <VipStatusModal isOpen={isVipModalOpen} onClose={() => setIsVipModalOpen(false)} user={user} />
+      <VipStatusModal
+        isOpen={isVipModalOpen}
+        onClose={() => setIsVipModalOpen(false)}
+        user={user}
+        onOpenPricing={() => {
+          setIsVipModalOpen(false);
+          setIsPricingOpen(true);
+        }}
+      />
       <TitlesModal isOpen={isTitlesModalOpen} onClose={() => setIsTitlesModalOpen(false)} onEquippedChange={(newTitle) => {
         setUser((prev) => prev ? { ...prev, equippedTitle: newTitle, title: newTitle } : prev);
         titlesApi.getTitles().then((res) => { if (res?.data) setTitlesData(res.data); }).catch(() => { });

@@ -255,6 +255,12 @@ const joinRoom = async (req, res, next) => {
     // Nếu chính Host quay trở lại phòng của mình -> Hủy bộ đếm timeout và reset hostLeftAt
     if (String(room.hostId) === String(userId) && room.hostLeftAt) {
       await Room.updateOne({ _id: room._id }, { $set: { hostLeftAt: null } });
+      try {
+        const { cancelHostAbsenceTimer } = require("../sockets");
+        if (typeof cancelHostAbsenceTimer === "function") {
+          cancelHostAbsenceTimer(formattedCode);
+        }
+      } catch (_) {}
       const io = getIo();
       if (io) {
         io.to(formattedCode).emit("room:host-returned", {
@@ -420,6 +426,26 @@ const getRoomByCode = async (req, res, next) => {
       });
     }
 
+    // Khử trùng triệt để mảng participants trước khi trả về client
+    if (room && Array.isArray(room.participants)) {
+      const seenUIds = new Set();
+      const cleanParticipants = [];
+      let hadDuplicates = false;
+      for (const p of room.participants) {
+        const uId = String(p.userId?._id || p.userId || "");
+        if (uId && !seenUIds.has(uId)) {
+          seenUIds.add(uId);
+          cleanParticipants.push(p);
+        } else if (uId) {
+          hadDuplicates = true;
+        }
+      }
+      room.participants = cleanParticipants;
+      if (hadDuplicates) {
+        Room.updateOne({ _id: room._id }, { $set: { participants: cleanParticipants } }).catch(() => {});
+      }
+    }
+
     // Xác thực userId từ req.user hoặc header token
     let currentUserId = req.user?.id || req.user?._id;
     if (!currentUserId && req.headers.authorization?.startsWith("Bearer ")) {
@@ -457,6 +483,12 @@ const getRoomByCode = async (req, res, next) => {
       // Nếu chính Host vào lại phòng của mình -> Hủy bộ đếm timeout và reset hostLeftAt
       if (String(room.hostId?._id || room.hostId) === String(currentUserId) && room.hostLeftAt) {
         await Room.updateOne({ _id: room._id }, { $set: { hostLeftAt: null } });
+        try {
+          const { cancelHostAbsenceTimer } = require("../sockets");
+          if (typeof cancelHostAbsenceTimer === "function") {
+            cancelHostAbsenceTimer(room.roomCode);
+          }
+        } catch (_) {}
         const io = getIo();
         if (io) {
           io.to(room.roomCode).emit("room:host-returned", {

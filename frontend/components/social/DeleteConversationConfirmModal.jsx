@@ -82,9 +82,8 @@ export function DeleteConversationConfirmModal({
           </h3>
 
           <p className="text-xs text-stone-400 max-w-sm text-center leading-relaxed">
-            Bạn có chắc chắn muốn xóa toàn bộ đoạn chat với{" "}
-            <span className="font-semibold text-amber-200">[{conversationName}]</span> không? Toàn
-            bộ tin nhắn và tệp tin trong cuộc trò chuyện sẽ bị xóa vĩnh viễn và không thể khôi phục.
+            Bạn có chắc chắn muốn xóa đoạn chat với{" "}
+            <span className="font-semibold text-amber-200">[{conversationName}]</span> không? Đoạn chat này sẽ bị xóa khỏi tài khoản của bạn. Đối phương vẫn có thể xem lại lịch sử tin nhắn của họ cho đến khi họ tự bấm xóa.
           </p>
         </div>
 

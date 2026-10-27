@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Users, LogOut, Search, X, Crown, User, ShieldCheck } from "lucide-react";
+import { Users, LogOut, Search, X, Crown, User, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RoomCard } from "@/components/dashboard/RoomCard";
 import { CreateRoomModal } from "@/components/dashboard/CreateRoomModal";
@@ -158,9 +158,17 @@ export function DashboardClient() {
       }
     };
 
+    const handleOpenVipModal = () => setIsVipModalOpen(true);
+    const handleOpenPricingModal = () => {
+      setIsVipModalOpen(false);
+      setIsPricingOpen(true);
+    };
+
     window.addEventListener("vsr:title-updated", handleTitleUpdated);
     window.addEventListener("vsr:user-updated", handleUserUpdated);
     window.addEventListener("vsr:open-chat-conversation", handleOpenChat);
+    window.addEventListener("vsr:open-vip-modal", handleOpenVipModal);
+    window.addEventListener("vsr:open-pricing-modal", handleOpenPricingModal);
 
     const socket = connectSocket();
     const handleSocketTitle = (data) => {
@@ -184,6 +192,8 @@ export function DashboardClient() {
       window.removeEventListener("vsr:title-updated", handleTitleUpdated);
       window.removeEventListener("vsr:user-updated", handleUserUpdated);
       window.removeEventListener("vsr:open-chat-conversation", handleOpenChat);
+      window.removeEventListener("vsr:open-vip-modal", handleOpenVipModal);
+      window.removeEventListener("vsr:open-pricing-modal", handleOpenPricingModal);
       if (socket) {
         socket.off("user:title-updated", handleSocketTitle);
       }
@@ -355,20 +365,31 @@ export function DashboardClient() {
 
                 {/* Nút Nâng cấp Pro / Badge VIP */}
                 {user.isPro || user.isVip ? (
-                  <VipBadge
-                    size="sm"
-                    showLabel={true}
-                    onClick={() => setIsVipModalOpen(true)}
-                    className="cursor-pointer transition-all hover:scale-105 active:scale-95 hover:shadow-md hover:shadow-amber-500/20"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <VipBadge
+                      size="sm"
+                      showLabel={true}
+                      onClick={() => setIsVipModalOpen(true)}
+                      className="cursor-pointer transition-all hover:scale-105 active:scale-95 hover:shadow-md hover:shadow-amber-500/20"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsPricingOpen(true)}
+                      className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium text-[#e8cca4] border border-[#c3a47b]/40 bg-[#c3a47b]/15 hover:bg-[#c3a47b]/25 hover:border-[#c3a47b] transition-all cursor-pointer shadow-xs"
+                      title="Gia hạn thêm thời hạn VIP"
+                    >
+                      <Sparkles className="h-3 w-3 text-amber-400" />
+                      <span>Gia hạn VIP</span>
+                    </button>
+                  </div>
                 ) : (
                   <button
-                    onClick={() => setIsVipModalOpen(true)}
+                    onClick={() => setIsPricingOpen(true)}
                     id="btn-upgrade-pro"
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium
                       text-[#e8cca4] border border-[#c3a47b]/50 bg-[#c3a47b]/20
                       hover:bg-[#c3a47b]/30 hover:border-[#c3a47b] transition-all cursor-pointer"
-                    title="Xem đặc quyền VIP & Hạn dùng"
+                    title="Nâng cấp VIP Học Giả"
                   >
                     <Crown className="h-3.5 w-3.5 text-[#e8cca4]" />
                     <span className="hidden sm:inline">Nâng cấp Pro</span>
@@ -622,6 +643,10 @@ export function DashboardClient() {
         isOpen={isVipModalOpen}
         onClose={() => setIsVipModalOpen(false)}
         user={user}
+        onOpenPricing={() => {
+          setIsVipModalOpen(false);
+          setIsPricingOpen(true);
+        }}
       />
 
       {/* Bộ sưu tập Danh hiệu & Quân hàm Modal */}
