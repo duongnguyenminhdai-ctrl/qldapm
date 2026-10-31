@@ -1304,90 +1304,131 @@ const initSocket = (io) => {
 
         const isMultiDeviceRequested = Boolean(
           arg1?.allowMultiDevice ||
-          arg2?.allowMultiDevice ||
-          socket.isMultiDeviceRequested ||
-          socket.handshake?.auth?.allowMultiDevice ||
-          socket.handshake?.query?.allowMultiDevice === "true"
+          arg2?.allowMultiDevice
         );
 
         // Kiểm tra độc quyền phiên phòng học (Single Active Room Session / Switch Device như Google Meet)
-        const existingSession = activeRoomSessions.get(uIdStr);
-        if (existingSession && !isMultiDeviceRequested) {
-          const oldRoomCode = (existingSession.roomCode || "").trim().toUpperCase();
-          const oldSocket = existingSession.socketId ? io.sockets.sockets.get(existingSession.socketId) : null;
+        let existingSession = activeRoomSessions.get(uIdStr);
+        let hasActiveDeviceInCall = false;
+        let activeOtherSocket = null;
+        let activeRoomOfOtherDevice = existingSession?.roomCode ? (existingSession.roomCode || "").trim().toUpperCase() : "";
 
-          // 1. Kiểm tra xem phòng cũ trong session có thực sự CÒN TỒN TẠI VÀ ĐANG HOẠT ĐỘNG không
-          let isOldRoomActive = false;
-          if (oldRoomCode) {
-            try {
-              const oldRoomDoc = await Room.findOne({
-                roomCode: oldRoomCode,
-                status: { $in: ["active", "waiting_host"] },
-                isActive: true,
-              });
-              isOldRoomActive = Boolean(oldRoomDoc);
-            } catch (_) {}
-          }
+        // 1. Kiểm tra qua session cache nếu có
+        if (existingSession) {
+          const sRoomCode = (existingSession.roomCode || "").trim().toUpperCase();
+          const deviceIds = existingSession.deviceSocketIds || (existingSession.socketId ? new Set([existingSession.socketId]) : new Set());
 
-          // 2. Kiểm tra xem socket cũ có thực sự đang kết nối VÀ đang ở trong phòng cũ đó hay không
-          const isOldSocketActuallyInCall = Boolean(
-            oldSocket &&
-            oldSocket.connected &&
-            oldSocket.id !== socket.id &&
-            (
-              oldSocket.roomCode === oldRoomCode ||
-              (oldSocket.rooms && oldSocket.rooms.has(oldRoomCode))
-            )
-          );
-
-          // Nếu phòng cũ đã đóng/không còn hoạt động, HOẶC socket cũ không hề đang trong phòng cũ (ví dụ đang ở ngoài Dashboard):
-          if (!isOldRoomActive || !isOldSocketActuallyInCall) {
-            // Đây là session rác cũ đã kết thúc hoặc socket cũ đã ra ngoài dashboard -> Dọn dẹp ngay, không coi là xung đột!
-            activeRoomSessions.delete(uIdStr);
-          } else {
-            console.log(
-              `[Socket Session] Xung đột phiên thiết bị thực sự cho user ${uIdStr}. Socket cũ: ${existingSession.socketId} (phòng ${oldRoomCode}), Socket mới: ${socket.id}`
-            );
-
-            // Thu thập thông tin phòng và thành viên hiện tại để hiển thị preview chuẩn Google Meet
-            const previewParticipants = (checkRoom.participants || [])
-              .map((p) => p.userId?.name || p.name || "")
-              .filter(Boolean)
-              .slice(0, 3);
-            const totalCount = checkRoom.participants ? checkRoom.participants.length : 1;
-
-            const conflictPayload = {
-              currentRoomId: existingSession.roomId,
-              currentRoomCode: oldRoomCode,
-              targetRoomCode: normalizedCode,
-              targetRoomTitle: checkRoom.title || `Phòng ${normalizedCode}`,
-              membersCount: totalCount,
-              previewParticipants,
-              user: {
-                id: uIdStr,
-                name: verifiedUserDoc.name,
-                email: verifiedUserDoc.email,
-                avatar: verifiedUserDoc.avatar,
-              },
-            };
-
-            socket.emit("room:device-conflict", conflictPayload);
-            if (typeof cb === "function") {
-              cb({
-                success: false,
-                deviceConflict: true,
-                code: "DEVICE_CONFLICT",
-                message:
-                  "Tài khoản của bạn hiện đang tham gia cuộc gọi trên thiết bị khác.",
-                ...conflictPayload,
-              });
+          for (const sid of deviceIds) {
+            if (sid === socket.id) continue;
+            const s = io.sockets.sockets.get(sid);
+            if (s && s.connected && (s.roomCode === sRoomCode || (s.rooms && s.rooms.has(sRoomCode)))) {
+              hasActiveDeviceInCall = true;
+              activeOtherSocket = s;
+              activeRoomOfOtherDevice = sRoomCode;
+              break;
             }
-            return;
           }
         }
 
+        // 2. Bảo vệ 2 lớp: Quét trực tiếp các socket đang kết nối trong phòng đích normalizedCode
+        if (!hasActiveDeviceInCall) {
+          try {
+            const socketsInTarget = await io.in(normalizedCode).fetchSockets();
+            for (const s of socketsInTarget) {
+              if (s.id !== socket.id) {
+                const sUid = String(s.userData?.id || s.userData?._id || s.userId || s.authUserId || "");
+                if (sUid && sUid === uIdStr) {
+                  hasActiveDeviceInCall = true;
+                  activeOtherSocket = s;
+                  activeRoomOfOtherDevice = normalizedCode;
+                  break;
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
+        // 3. Quét toàn bộ danh sách socket đang hoạt động xem user có đang ở phòng nào khác không
+        if (!hasActiveDeviceInCall) {
+          for (const [sid, s] of io.sockets.sockets.entries()) {
+            if (sid !== socket.id && s.connected) {
+              const sUid = String(s.userData?.id || s.userData?._id || s.userId || s.authUserId || "");
+              if (sUid && sUid === uIdStr && (s.roomCode || (s.rooms && s.rooms.size > 1))) {
+                hasActiveDeviceInCall = true;
+                activeOtherSocket = s;
+                activeRoomOfOtherDevice = s.roomCode || "";
+                break;
+              }
+            }
+          }
+        }
+
+        // Nếu phát hiện thiết bị khác đang trong cuộc gọi nhưng chưa có existingSession, tạo mới để theo dõi
+        if (hasActiveDeviceInCall) {
+          if (!existingSession) {
+            existingSession = {
+              socketId: activeOtherSocket.id,
+              deviceSocketIds: new Set([activeOtherSocket.id]),
+              roomId: checkRoom._id ? String(checkRoom._id) : activeRoomOfOtherDevice,
+              roomCode: activeRoomOfOtherDevice || normalizedCode,
+              userAgent: activeOtherSocket.handshake?.headers?.["user-agent"] || "",
+            };
+            activeRoomSessions.set(uIdStr, existingSession);
+          } else {
+            if (!existingSession.deviceSocketIds) {
+              existingSession.deviceSocketIds = new Set([existingSession.socketId]);
+            }
+            if (activeOtherSocket?.id) {
+              existingSession.deviceSocketIds.add(activeOtherSocket.id);
+            }
+          }
+        }
+
+        if (hasActiveDeviceInCall && !isMultiDeviceRequested) {
+          // CÓ THIẾT BỊ KHÁC ĐANG TRONG CUỘC GỌI VÀ CHƯA CHỌN MULTI-DEVICE:
+          // BẮT BUỘC PHẢI BẬT MÀN HÌNH XÁC NHẬN!
+          console.log(
+            `[Socket Session] Xung đột phiên thiết bị cho user ${uIdStr}. Socket đang chạy: ${activeOtherSocket?.id} (phòng ${activeRoomOfOtherDevice}), Socket mới: ${socket.id}`
+          );
+
+          // Thu thập thông tin phòng và thành viên hiện tại để hiển thị preview chuẩn Google Meet
+          const previewParticipants = (checkRoom.participants || [])
+            .map((p) => p.userId?.name || p.name || "")
+            .filter(Boolean)
+            .slice(0, 3);
+          const totalCount = checkRoom.participants ? checkRoom.participants.length : 1;
+
+          const conflictPayload = {
+            currentRoomId: existingSession?.roomId || checkRoom._id,
+            currentRoomCode: activeRoomOfOtherDevice || normalizedCode,
+            targetRoomCode: normalizedCode,
+            targetRoomTitle: checkRoom.title || `Phòng ${normalizedCode}`,
+            membersCount: totalCount,
+            previewParticipants,
+            user: {
+              id: uIdStr,
+              name: verifiedUserDoc.name,
+              email: verifiedUserDoc.email,
+              avatar: verifiedUserDoc.avatar,
+            },
+          };
+
+          socket.emit("room:device-conflict", conflictPayload);
+          if (typeof cb === "function") {
+            cb({
+              success: false,
+              deviceConflict: true,
+              code: "DEVICE_CONFLICT",
+              message:
+                "Tài khoản của bạn hiện đang tham gia cuộc gọi trên thiết bị khác.",
+              ...conflictPayload,
+            });
+          }
+          return;
+        }
+
         // Nếu người dùng chọn Đồng thời tham gia 2 thiết bị: ghi nhận socket này vào danh sách multiDevice
-        if (existingSession && isMultiDeviceRequested) {
+        if (hasActiveDeviceInCall && isMultiDeviceRequested) {
           if (!existingSession.deviceSocketIds) {
             existingSession.deviceSocketIds = new Set([existingSession.socketId]);
           }
@@ -1572,7 +1613,11 @@ const initSocket = (io) => {
         }
 
         // Phát sự kiện user-joined tới các thành viên khác trong phòng NGAY LẬP TỨC
-        socket.to(normalizedCode).emit("room:user-joined", socket.userData);
+        // Nếu là thiết bị phụ (Multi-device companion) của cùng một người dùng:
+        // Coi như user ảo (2 thiết bị nhưng là 1 user), KHÔNG phát user-joined để không làm tăng số lượng người hoặc hiện 2 người
+        if (!socket.isMultiDevice) {
+          socket.to(normalizedCode).emit("room:user-joined", socket.userData);
+        }
 
         // Lấy thông tin phòng và danh sách participants mới nhất từ DB
         const currentRoom = await Room.findOne({ roomCode: normalizedCode })
@@ -1661,9 +1706,17 @@ const initSocket = (io) => {
           hasActiveListener: hasActiveTranscription,
         });
 
-        // Cập nhật phiên độc quyền hoạt động của user trên socket này
+        // Cập nhật phiên độc quyền hoạt động của user trên socket này (bảo toàn danh sách thiết bị)
+        const currentSess = activeRoomSessions.get(uIdStr);
+        const deviceIds = currentSess?.deviceSocketIds || new Set();
+        if (currentSess?.socketId) {
+          deviceIds.add(currentSess.socketId);
+        }
+        deviceIds.add(socket.id);
+
         activeRoomSessions.set(uIdStr, {
-          socketId: socket.id,
+          socketId: currentSess?.socketId || socket.id,
+          deviceSocketIds: deviceIds,
           roomId: checkRoom._id ? String(checkRoom._id) : normalizedCode,
           roomCode: normalizedCode,
           userAgent: socket.handshake?.headers?.["user-agent"] || "",
@@ -3873,7 +3926,63 @@ const initSocket = (io) => {
             console.error("[Socket] Loi kiem tra host:", dbErr.message);
           }
 
-          // Xóa user khỏi mảng participants trong database
+          // Kiểm tra xem user này CÒN THIẾT BỊ NÀO KHÁC đang ở trong phòng hay không
+          const session = activeRoomSessions.get(String(userId));
+          if (session && session.deviceSocketIds) {
+            session.deviceSocketIds.delete(socket.id);
+          }
+
+          let hasOtherDeviceInRoom = false;
+          if (session && session.deviceSocketIds && session.deviceSocketIds.size > 0) {
+            for (const sid of session.deviceSocketIds) {
+              const otherSock = io.sockets.sockets.get(sid);
+              if (
+                otherSock &&
+                otherSock.connected &&
+                otherSock.id !== socket.id &&
+                (otherSock.roomCode === normalizedCode || (otherSock.rooms && otherSock.rooms.has(normalizedCode)))
+              ) {
+                hasOtherDeviceInRoom = true;
+                break;
+              }
+            }
+          }
+
+          // Bảo vệ 2 lớp: Quét trực tiếp các socket đang kết nối trong phòng normalizedCode
+          if (!hasOtherDeviceInRoom) {
+            try {
+              const socketsInRoom = await io.in(normalizedCode).fetchSockets();
+              for (const s of socketsInRoom) {
+                if (s.id !== socket.id) {
+                  const sUid = String(s.userData?.id || s.userData?._id || s.userId || s.authUserId || "");
+                  if (sUid && sUid === String(userId)) {
+                    hasOtherDeviceInRoom = true;
+                    if (session && session.deviceSocketIds) {
+                      session.deviceSocketIds.add(s.id);
+                    }
+                    break;
+                  }
+                }
+              }
+            } catch (_) {}
+          }
+
+          // NẾU VẪN CÒN THIẾT BỊ KHÁC CỦA CÙNG USER NÀY ĐANG TRONG PHÒNG:
+          // TUYỆT ĐỐI KHÔNG XÓA USER KHỎI PARTICIPANTS VÀ KHÔNG BÁO USER-LEFT!
+          if (hasOtherDeviceInRoom) {
+            console.log(
+              `[Socket] Thiết bị phụ ${socket.id} của user [${userName}] rời phòng ${normalizedCode}. User vẫn còn thiết bị khác trong cuộc gọi, giữ nguyên sĩ số phòng!`
+            );
+            socket.leave(normalizedCode);
+            socket.roomCode = null;
+            socket.userData = null;
+            socket.isMultiDevice = false;
+            socket.isMultiDeviceRequested = false;
+            if (typeof callback === "function") callback({ success: true });
+            return;
+          }
+
+          // Xóa user khỏi mảng participants trong database (chỉ khi thiết bị cuối cùng của user rời phòng)
           if (userId) {
             try {
               await Room.findOneAndUpdate(
@@ -4025,14 +4134,12 @@ const initSocket = (io) => {
               current.deviceSocketIds.delete(socket.id);
             }
             if (
-              current.socketId === socket.id ||
-              current.roomCode === normalizedCode ||
               !current.deviceSocketIds ||
               current.deviceSocketIds.size === 0
             ) {
               activeRoomSessions.delete(uIdKey);
               console.log(
-                `[Socket Session] Đã xóa activeRoomSession của user ${uIdKey} khi rời phòng ${normalizedCode}`
+                `[Socket Session] Đã xóa activeRoomSession của user ${uIdKey} khi tất cả thiết bị rời phòng ${normalizedCode}`
               );
             }
           }
@@ -4096,33 +4203,23 @@ const initSocket = (io) => {
         const uIdStr = String(effectiveUserId);
         const existingSession = activeRoomSessions.get(uIdStr);
 
-        if (existingSession && existingSession.socketId !== socket.id) {
-          console.log(
-            `[Socket Session] Xác nhận chiếm quyền phiên học cho user ${uIdStr}: Ngắt phiên thiết bị cũ ${existingSession.socketId} (phòng ${existingSession.roomCode})`
-          );
-
-          // 1. Gửi lệnh ngắt kết nối đến socket cũ
-          io.to(existingSession.socketId).emit("room:force-evicted", {
-            reason: "SWITCHED_TO_ANOTHER_DEVICE",
-            message:
-              "Bạn đã rời phòng học do tài khoản vừa được chuyển sang sử dụng trên một thiết bị khác.",
-          });
-
-          // 2. Thực hiện logic rời phòng cho socket cũ (trừ sĩ số phòng, emit sự kiện user-left cho các học viên khác)
-          const oldSocket = io.sockets.sockets.get(existingSession.socketId);
-          if (oldSocket) {
-            const oldRoomCode = existingSession.roomCode;
-            if (oldRoomCode) {
-              const graceKey = `${oldRoomCode}_${uIdStr}`;
-              if (disconnectGraceTimers.has(graceKey)) {
-                clearTimeout(disconnectGraceTimers.get(graceKey));
-                disconnectGraceTimers.delete(graceKey);
-              }
-            }
-            if (typeof oldSocket._handleLeaveRoom === "function") {
-              await oldSocket._handleLeaveRoom({ roomCode: existingSession.roomCode });
-            } else {
+        if (existingSession) {
+          const deviceIds = existingSession.deviceSocketIds || new Set([existingSession.socketId]);
+          for (const oldSid of deviceIds) {
+            if (oldSid === socket.id) continue;
+            console.log(
+              `[Socket Session] Ngắt phiên thiết bị cũ ${oldSid} do người dùng chuyển sang thiết bị mới ${socket.id}`
+            );
+            io.to(oldSid).emit("room:force-evicted", {
+              reason: "SWITCHED_TO_ANOTHER_DEVICE",
+              message:
+                "Bạn đã rời phòng học do tài khoản vừa được chuyển sang sử dụng trên một thiết bị khác.",
+            });
+            const oldSocket = io.sockets.sockets.get(oldSid);
+            if (oldSocket) {
               oldSocket.leave(existingSession.roomCode);
+              oldSocket.roomCode = null;
+              oldSocket.userData = null;
             }
           }
         }
@@ -4143,6 +4240,7 @@ const initSocket = (io) => {
         // 3. Gán phiên mới cho socket hiện tại
         activeRoomSessions.set(uIdStr, {
           socketId: socket.id,
+          deviceSocketIds: new Set([socket.id]),
           roomId: targetRoomId ? String(targetRoomId) : "",
           roomCode: targetRoomCode ? String(targetRoomCode).trim().toUpperCase() : "",
           userAgent: socket.handshake?.headers?.["user-agent"] || "",
@@ -4744,12 +4842,11 @@ const initSocket = (io) => {
           if (current.deviceSocketIds) {
             current.deviceSocketIds.delete(socket.id);
           }
-          if (
-            current.socketId === socket.id ||
-            !current.deviceSocketIds ||
-            current.deviceSocketIds.size === 0
-          ) {
+          if (!current.deviceSocketIds || current.deviceSocketIds.size === 0) {
             activeRoomSessions.delete(effectiveDisconnId);
+          } else if (current.socketId === socket.id) {
+            const [remainingSid] = current.deviceSocketIds;
+            current.socketId = remainingSid;
           }
         }
       }
@@ -4872,26 +4969,43 @@ const initSocket = (io) => {
 
             // 4. Nếu là thành viên thường thực sự ngắt kết nối
             if (userId) {
-              try {
-                await Room.findOneAndUpdate(
-                  { roomCode: normalizedCode },
-                  {
-                    $pull: {
-                      participants: {
-                        userId: uIdStr,
-                      },
-                    },
+              const session = activeRoomSessions.get(uIdStr);
+              if (session && session.deviceSocketIds) {
+                session.deviceSocketIds.delete(socket.id);
+              }
+              let hasOtherDevice = false;
+              if (session && session.deviceSocketIds && session.deviceSocketIds.size > 0) {
+                for (const sid of session.deviceSocketIds) {
+                  const s = io.sockets.sockets.get(sid);
+                  if (s && s.connected && s.id !== socket.id && (s.roomCode === normalizedCode || (s.rooms && s.rooms.has(normalizedCode)))) {
+                    hasOtherDevice = true;
+                    break;
                   }
+                }
+              }
+
+              if (!hasOtherDevice) {
+                try {
+                  await Room.findOneAndUpdate(
+                    { roomCode: normalizedCode },
+                    {
+                      $pull: {
+                        participants: {
+                          userId: uIdStr,
+                        },
+                      },
+                    }
+                  );
+                } catch (dbErr) {
+                  console.error("[Socket] Lỗi cập nhật DB khi hết hạn grace:", dbErr.message);
+                }
+                emitUserLeftSafely(io, normalizedCode, uIdStr, socket.id, userName);
+              } else {
+                console.log(
+                  `[Socket Disconnect] User [${userName}] vẫn còn thiết bị khác trong phòng ${normalizedCode}, giữ nguyên sĩ số phòng!`
                 );
-              } catch (dbErr) {
-                console.error("[Socket] Lỗi cập nhật DB khi hết hạn grace:", dbErr.message);
               }
             }
-
-            // Xử lý bỏ cuộc cờ vua nếu ván đấu đang diễn ra và người ngắt kết nối là 1 trong 2 đấu thủ
-            handleChessPlayerAbandonment(normalizedCode, uIdStr, io, userName);
-
-            emitUserLeftSafely(io, normalizedCode, uIdStr, socket.id, userName);
 
             try {
               const updatedDoc = await Room.findOne({ roomCode: normalizedCode })
