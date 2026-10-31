@@ -61,31 +61,12 @@ function getInitials(name = "") {
  */
 function copyStylesheets(sourceDoc, targetDoc) {
   try {
-    Array.from(sourceDoc.styleSheets).forEach((styleSheet) => {
+    // 1. Sao chép toàn bộ thẻ <link rel="stylesheet"> và <style> từ document chính
+    const nodes = sourceDoc.querySelectorAll("link[rel='stylesheet'], style");
+    nodes.forEach((node) => {
       try {
-        if (styleSheet.href) {
-          const link = targetDoc.createElement("link");
-          link.rel = "stylesheet";
-          link.type = styleSheet.type || "text/css";
-          link.media = styleSheet.media?.mediaText || "all";
-          link.href = styleSheet.href;
-          targetDoc.head.appendChild(link);
-        } else if (styleSheet.cssRules) {
-          const style = targetDoc.createElement("style");
-          Array.from(styleSheet.cssRules).forEach((rule) => {
-            style.appendChild(targetDoc.createTextNode(rule.cssText));
-          });
-          targetDoc.head.appendChild(style);
-        }
-      } catch (_) {
-        // Fallback CORS
-        if (styleSheet.href) {
-          const link = targetDoc.createElement("link");
-          link.rel = "stylesheet";
-          link.href = styleSheet.href;
-          targetDoc.head.appendChild(link);
-        }
-      }
+        targetDoc.head.appendChild(node.cloneNode(true));
+      } catch (_) {}
     });
 
     const baseStyle = targetDoc.createElement("style");
@@ -493,90 +474,142 @@ export function RoomMeetPiP({
   const [pipWindow, setPipWindow] = useState(null);
   const [isFallbackOpen, setIsFallbackOpen] = useState(false);
   const isOpeningRef = useRef(false);
+  const pipWindowRef = useRef(null);
+  const isFallbackOpenRef = useRef(false);
 
-  // Mở cửa sổ Document Picture-in-Picture
-  const openPip = useCallback(async () => {
-    if (isOpeningRef.current || pipWindow) return;
+  useEffect(() => {
+    pipWindowRef.current = pipWindow;
+  }, [pipWindow]);
 
-    // Kiểm tra trình duyệt có hỗ trợ Document Picture-in-Picture API không
-    if (typeof window !== "undefined" && "documentPictureInPicture" in window) {
-      isOpeningRef.current = true;
-      try {
-        const pip = await window.documentPictureInPicture.requestWindow({
-          width: 340,
-          height: 560,
-        });
-
-        copyStylesheets(document, pip.document);
-        pip.document.title = roomTitle ? `${roomTitle} • VSR Meet` : "Virtual Study Room";
-
-        pip.addEventListener("pagehide", () => {
-          setPipWindow(null);
-          onPipStateChange?.(false);
-        });
-
-        setPipWindow(pip);
-        onPipStateChange?.(true);
-      } catch (err) {
-        console.warn("[MeetPiP] Trình duyệt chặn hoặc lỗi mở Document PiP:", err);
-        // Fallback: Mở thanh dọc in-page nếu PiP bị lỗi
-        setIsFallbackOpen(true);
-        onPipStateChange?.(true);
-      } finally {
-        isOpeningRef.current = false;
-      }
-    } else {
-      // Trình duyệt không hỗ trợ Document PiP (Firefox, Safari cũ): Dùng In-page floating dock
-      setIsFallbackOpen(true);
-      onPipStateChange?.(true);
-    }
-  }, [pipWindow, roomTitle, onPipStateChange]);
+  useEffect(() => {
+    isFallbackOpenRef.current = isFallbackOpen;
+  }, [isFallbackOpen]);
 
   // Đóng cửa sổ PiP
   const closePip = useCallback(() => {
-    if (pipWindow) {
+    if (pipWindowRef.current) {
       try {
-        pipWindow.close();
+        pipWindowRef.current.close();
       } catch (_) {}
+      pipWindowRef.current = null;
       setPipWindow(null);
     }
-    setIsFallbackOpen(false);
+    if (isFallbackOpenRef.current) {
+      isFallbackOpenRef.current = false;
+      setIsFallbackOpen(false);
+    }
     onPipStateChange?.(false);
-  }, [pipWindow, onPipStateChange]);
+  }, [onPipStateChange]);
 
-  // Focus về tab chính
+  // Mở cửa sổ Document Picture-in-Picture
+  const openPip = useCallback(
+    async (isManual = false) => {
+      if (isOpeningRef.current || pipWindowRef.current || isFallbackOpenRef.current) {
+        return;
+      }
+
+      // Kiểm tra trình duyệt có hỗ trợ Document Picture-in-Picture API không
+      if (typeof window !== "undefined" && "documentPictureInPicture" in window) {
+        isOpeningRef.current = true;
+        try {
+          const pip = await window.documentPictureInPicture.requestWindow({
+            width: 360,
+            height: 580,
+          });
+
+          copyStylesheets(document, pip.document);
+          pip.document.title = roomTitle ? `${roomTitle} • VSR Meet` : "Virtual Study Room";
+
+          pip.addEventListener("pagehide", () => {
+            pipWindowRef.current = null;
+            setPipWindow(null);
+            onPipStateChange?.(false);
+          });
+
+          pipWindowRef.current = pip;
+          setPipWindow(pip);
+          onPipStateChange?.(true);
+        } catch (err) {
+          console.warn("[MeetPiP] Trình duyệt chặn hoặc lỗi mở Document PiP:", err);
+          // CHỈ mở In-page Fallback nếu người dùng bấm nút THỦ CÔNG
+          // Tuyệt đối KHÔNG tự mở In-page Fallback khi chuyển tab/app (vì người dùng không ở tab này)
+          if (isManual) {
+            isFallbackOpenRef.current = true;
+            setIsFallbackOpen(true);
+            onPipStateChange?.(true);
+          }
+        } finally {
+          isOpeningRef.current = false;
+        }
+      } else if (isManual) {
+        // Trình duyệt không hỗ trợ Document PiP (Firefox, Safari cũ): Chỉ mở In-page nếu người dùng bấm thủ công
+        isFallbackOpenRef.current = true;
+        setIsFallbackOpen(true);
+        onPipStateChange?.(true);
+      }
+    },
+    [roomTitle, onPipStateChange]
+  );
+
+  // Focus về tab chính và tự động đóng cửa sổ PiP
   const handleFocusTab = useCallback(() => {
     if (typeof window !== "undefined") {
       window.focus();
     }
-  }, []);
+    closePip();
+  }, [closePip]);
 
   // Xử lý tự động thu nhỏ khi chuyển tab hoặc chuyển sang ứng dụng khác (Zalo, VS Code, v.v.)
+  // và TỰ ĐỘNG ĐÓNG khi người dùng quay trở lại (focus) tab web phòng học
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
-        // Tab bị ẩn do người dùng chuyển tab hoặc mở app khác
-        if (autoPipEnabled && !pipWindow && !isFallbackOpen) {
-          openPip();
+        // Tab bị ẩn do người dùng chuyển sang tab khác hoặc thu nhỏ trình duyệt -> Tự động mở PiP
+        if (autoPipEnabled && !pipWindowRef.current && !isFallbackOpenRef.current) {
+          openPip(false);
         }
       } else if (document.visibilityState === "visible") {
-        // Người dùng đã quay lại tab chính -> nếu muốn tự động đóng khi quay lại
-        // Meet thường giữ PiP mở hoặc người dùng bấm đóng / quay lại tab.
+        // Người dùng đã quay trở lại tab phòng học chính -> Tự động tắt PiP ngay lập tức
+        closePip();
+      }
+    };
+
+    const handleWindowBlur = () => {
+      // Khi người dùng chuyển sang ứng dụng khác ngoài Windows (VS Code, Word, Zalo...)
+      if (
+        autoPipEnabled &&
+        !pipWindowRef.current &&
+        !isFallbackOpenRef.current &&
+        document.visibilityState === "hidden"
+      ) {
+        openPip(false);
+      }
+    };
+
+    const handleWindowFocus = () => {
+      // Khi người dùng click quay lại cửa sổ trình duyệt tab phòng học -> Tự động tắt PiP
+      if (document.visibilityState === "visible") {
+        closePip();
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("focus", handleWindowFocus);
+
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("focus", handleWindowFocus);
     };
-  }, [autoPipEnabled, pipWindow, isFallbackOpen, openPip]);
+  }, [autoPipEnabled, openPip, closePip]);
 
-  // Lắng nghe MediaSession để Chrome tự động kích hoạt PiP khi chuyển tab
+  // Lắng nghe MediaSession để Chrome tự động kích hoạt PiP khi chuyển tab/app
   useEffect(() => {
     if (typeof navigator !== "undefined" && "mediaSession" in navigator) {
       try {
         navigator.mediaSession.setActionHandler("enterpictureinpicture", () => {
-          openPip();
+          openPip(false);
         });
       } catch (_) {}
 
@@ -588,13 +621,13 @@ export function RoomMeetPiP({
     }
   }, [openPip]);
 
-  // Lắng nghe Custom Event để các nút ngoài (FloatingDock, Header) có thể gọi mở PiP
+  // Lắng nghe Custom Event để các nút ngoài (FloatingDock, Header) có thể gọi bật / tắt PiP tùy ý
   useEffect(() => {
-    const handleTogglePipEvent = (e) => {
-      if (pipWindow || isFallbackOpen) {
+    const handleTogglePipEvent = () => {
+      if (pipWindowRef.current || isFallbackOpenRef.current) {
         closePip();
       } else {
-        openPip();
+        openPip(true /* isManual = true */);
       }
     };
 
@@ -602,18 +635,18 @@ export function RoomMeetPiP({
     return () => {
       window.removeEventListener("vsr:toggle-meet-pip", handleTogglePipEvent);
     };
-  }, [pipWindow, isFallbackOpen, openPip, closePip]);
+  }, [openPip, closePip]);
 
   // Cleanup khi component unmount
   useEffect(() => {
     return () => {
-      if (pipWindow) {
+      if (pipWindowRef.current) {
         try {
-          pipWindow.close();
+          pipWindowRef.current.close();
         } catch (_) {}
       }
     };
-  }, [pipWindow]);
+  }, []);
 
   const pipContent = (
     <MeetPiPView
@@ -636,7 +669,7 @@ export function RoomMeetPiP({
     return createPortal(pipContent, pipWindow.document.body);
   }
 
-  // 2. Trường hợp: Fallback In-page Floating Mini Bar (cho trình duyệt không hỗ trợ Document PiP)
+  // 2. Trường hợp: Fallback In-page Floating Mini Bar (chỉ khi người dùng bấm thủ công trên trình duyệt không có Document PiP)
   if (isFallbackOpen) {
     return (
       <div className="fixed bottom-4 right-4 z-[9999] w-80 h-[520px] rounded-2xl shadow-2xl overflow-hidden border border-amber-500/40 animate-in fade-in zoom-in-95 duration-200">
