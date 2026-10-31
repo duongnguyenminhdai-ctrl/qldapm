@@ -100,6 +100,23 @@ function playJoinRequestChime() {
 }
 
 /**
+ * Định danh duy nhất cho từng tab trình duyệt (tồn tại nguyên vẹn qua F5 / reload)
+ */
+function getTabSessionId() {
+  if (typeof window === "undefined") return "";
+  try {
+    let tid = window.sessionStorage.getItem("vsr_tab_id");
+    if (!tid) {
+      tid = "tab_" + Math.random().toString(36).slice(2, 10) + "_" + Date.now().toString(36);
+      window.sessionStorage.setItem("vsr_tab_id", tid);
+    }
+    return tid;
+  } catch (_) {
+    return "";
+  }
+}
+
+/**
  * Chuyển dữ liệu participant từ API sang định dạng member cho UI
  */
 function participantToMember(p, hostId, currentUserId, raisedHands, focusStatuses) {
@@ -867,11 +884,13 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       }
 
       const allowMultiDevice = Boolean(options?.allowMultiDevice);
+      const tabId = getTabSessionId();
 
       socket.emit(
         "join-room",
         {
           roomCode,
+          tabId,
           allowMultiDevice,
           user: {
             id: uId,
@@ -907,6 +926,22 @@ export default function RoomLayout({ roomCode, initialRoom }) {
     };
 
     emitJoinRef.current = emitJoin;
+
+    // Lắng nghe ping từ server để xác nhận socket này đang thực sự sống trong trình duyệt
+    const handlePingCheckAlive = (data, callback) => {
+      if (typeof callback === "function") {
+        callback({ alive: true, tabId: getTabSessionId(), roomCode });
+      }
+    };
+    socket.on("room:ping-check-alive", handlePingCheckAlive);
+
+    // Báo trước cho server biết tab chuẩn bị F5 hoặc đóng trang để kích hoạt ân hạn 15s
+    const handleBeforeUnload = () => {
+      if (socket && socket.connected) {
+        socket.emit("room:client-refreshing", { roomCode, tabId: getTabSessionId() });
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
     // Lắng nghe xung đột thiết bị (Single Active Room Session / Switch Device phong cách Google Meet)
     const handleDeviceConflict = (data) => {
@@ -1558,6 +1593,8 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       socket.off("room:terminated", handleRoomTerminated);
       socket.off("room:device-conflict", handleDeviceConflict);
       socket.off("room:force-evicted", handleForceEvicted);
+      socket.off("room:ping-check-alive", handlePingCheckAlive);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       clearInterval(studyHeartbeatInterval);
       window.removeEventListener("focus", handleWindowFocus);
     };

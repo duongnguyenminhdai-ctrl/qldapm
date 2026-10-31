@@ -25,6 +25,34 @@ const roomStates = new Map();
 // Bộ đệm lưu trữ timer ân hạn khi client ngắt kết nối tạm thời (F5 / rớt mạng ngắn)
 const disconnectGraceTimers = new Map(); // key: `${normalizedCode}_${userId}` -> timer
 
+// Ghi nhận các phiên tải lại trang (F5) trong vòng 15 giây để tránh chặn nhầm xung đột thiết bị
+const recentRefreshSessions = new Map(); // key: `${normalizedCode}_${userId}` -> { tabId, timestamp, socketId }
+
+/**
+ * Helper kiểm tra xem một socket có thực sự đang phản hồi (alive) trong trình duyệt hay không.
+ * Nếu là F5, trang web cũ đã unload nên socket cũ sẽ không bao giờ phản hồi ack trong 700ms.
+ */
+function pingSocketLiveness(targetSocket, timeoutMs = 700) {
+  return new Promise((resolve) => {
+    if (!targetSocket || !targetSocket.connected) {
+      return resolve(false);
+    }
+    let timer = setTimeout(() => {
+      resolve(false);
+    }, timeoutMs);
+
+    try {
+      targetSocket.emit("room:ping-check-alive", {}, (res) => {
+        clearTimeout(timer);
+        resolve(Boolean(res && res.alive));
+      });
+    } catch (_) {
+      clearTimeout(timer);
+      resolve(false);
+    }
+  });
+}
+
 // Bộ đếm timeout 10 phút khi Host rời phòng mà không chỉ định host mới
 const hostAbsenceTimers = new Map(); // key: normalizedCode -> { timer, startedAt }
 
@@ -1302,6 +1330,9 @@ const initSocket = (io) => {
         const userId = String(verifiedUserDoc._id);
         const uIdStr = String(verifiedUserDoc._id);
 
+        const incomingTabId = arg1?.tabId || arg2?.tabId || socket.handshake?.query?.tabId || "";
+        socket.tabId = incomingTabId;
+
         const isMultiDeviceRequested = Boolean(
           arg1?.allowMultiDevice ||
           arg2?.allowMultiDevice
@@ -1313,6 +1344,26 @@ const initSocket = (io) => {
         let activeOtherSocket = null;
         let activeRoomOfOtherDevice = existingSession?.roomCode ? (existingSession.roomCode || "").trim().toUpperCase() : "";
 
+        // Kiểm tra trạng thái ân hạn 15 giây F5 gần nhất của user này
+        const refreshGraceKey = `${normalizedCode}_${uIdStr}`;
+        const recentRefresh = recentRefreshSessions.get(refreshGraceKey);
+        const isRecent15s = recentRefresh && (Date.now() - recentRefresh.timestamp < 15000);
+
+        // Helper kiểm tra xem socket cũ có phải cùng tab vừa F5 hay không
+        const isSameTabF5 = (otherSock) => {
+          if (!otherSock) return false;
+          if (incomingTabId && otherSock.tabId && incomingTabId === otherSock.tabId) {
+            return true;
+          }
+          if (otherSock.isRefreshing) {
+            return true;
+          }
+          if (isRecent15s && (recentRefresh.socketId === otherSock.id || (incomingTabId && recentRefresh.tabId === incomingTabId))) {
+            return true;
+          }
+          return false;
+        };
+
         // 1. Kiểm tra qua session cache nếu có
         if (existingSession) {
           const sRoomCode = (existingSession.roomCode || "").trim().toUpperCase();
@@ -1322,6 +1373,21 @@ const initSocket = (io) => {
             if (sid === socket.id) continue;
             const s = io.sockets.sockets.get(sid);
             if (s && s.connected && (s.roomCode === sRoomCode || (s.rooms && s.rooms.has(sRoomCode)))) {
+              if (isSameTabF5(s)) {
+                console.log(`[Socket Session] User ${uIdStr} vừa F5 tab ${incomingTabId || s.id}. Thay thế socket cũ không hiện modal.`);
+                s.leave(sRoomCode);
+                s.disconnect(true);
+                existingSession.deviceSocketIds?.delete(sid);
+                continue;
+              }
+              const isAlive = await pingSocketLiveness(s, 700);
+              if (!isAlive) {
+                console.log(`[Socket Session] Socket cũ ${s.id} không phản hồi ping (zombie/F5), dọn dẹp nhường chỗ cho socket mới.`);
+                s.leave(sRoomCode);
+                s.disconnect(true);
+                existingSession.deviceSocketIds?.delete(sid);
+                continue;
+              }
               hasActiveDeviceInCall = true;
               activeOtherSocket = s;
               activeRoomOfOtherDevice = sRoomCode;
@@ -1338,6 +1404,19 @@ const initSocket = (io) => {
               if (s.id !== socket.id) {
                 const sUid = String(s.userData?.id || s.userData?._id || s.userId || s.authUserId || "");
                 if (sUid && sUid === uIdStr) {
+                  if (isSameTabF5(s)) {
+                    console.log(`[Socket Target] User ${uIdStr} vừa F5 tab ${incomingTabId || s.id}. Dọn dẹp socket cũ.`);
+                    s.leave(normalizedCode);
+                    s.disconnect(true);
+                    continue;
+                  }
+                  const isAlive = await pingSocketLiveness(s, 700);
+                  if (!isAlive) {
+                    console.log(`[Socket Target] Socket cũ ${s.id} không phản hồi ping (zombie/F5), dọn dẹp.`);
+                    s.leave(normalizedCode);
+                    s.disconnect(true);
+                    continue;
+                  }
                   hasActiveDeviceInCall = true;
                   activeOtherSocket = s;
                   activeRoomOfOtherDevice = normalizedCode;
@@ -1354,6 +1433,18 @@ const initSocket = (io) => {
             if (sid !== socket.id && s.connected) {
               const sUid = String(s.userData?.id || s.userData?._id || s.userId || s.authUserId || "");
               if (sUid && sUid === uIdStr && (s.roomCode || (s.rooms && s.rooms.size > 1))) {
+                if (isSameTabF5(s)) {
+                  console.log(`[Socket All] User ${uIdStr} vừa F5 tab ${incomingTabId || s.id}. Dọn dẹp socket cũ.`);
+                  s.leave(s.roomCode || normalizedCode);
+                  s.disconnect(true);
+                  continue;
+                }
+                const isAlive = await pingSocketLiveness(s, 700);
+                if (!isAlive) {
+                  s.leave(s.roomCode || normalizedCode);
+                  s.disconnect(true);
+                  continue;
+                }
                 hasActiveDeviceInCall = true;
                 activeOtherSocket = s;
                 activeRoomOfOtherDevice = s.roomCode || "";
@@ -4398,6 +4489,19 @@ const initSocket = (io) => {
     socket.on("room:leave", handleLeaveRoom);
     socket.on("room:confirm-switch-device", handleConfirmSwitchDevice);
     socket.on("room:confirm-join-multi-device", handleConfirmJoinMultiDevice);
+    socket.on("room:client-refreshing", ({ roomCode: rCode, tabId } = {}) => {
+      socket.isRefreshing = true;
+      if (tabId) socket.tabId = tabId;
+      const targetRoom = (rCode || socket.roomCode || "").trim().toUpperCase();
+      const uId = String(socket.userData?.id || socket.userId || socket.authUserId || "");
+      if (uId && targetRoom) {
+        recentRefreshSessions.set(`${targetRoom}_${uId}`, {
+          tabId: tabId || socket.tabId || "",
+          timestamp: Date.now(),
+          socketId: socket.id,
+        });
+      }
+    });
     socket.on("terminate_room", handleTerminateRoom);
     socket.on("room:terminate", handleTerminateRoom);
     socket.on("room:stay-alone", handleStayAlone);
@@ -4921,6 +5025,13 @@ const initSocket = (io) => {
         const uIdStr = String(userId);
         const graceKey = `${normalizedCode}_${uIdStr}`;
 
+        // Lưu vết tabId và thời điểm ngắt kết nối để nhận diện F5 trong vòng 15 giây
+        recentRefreshSessions.set(graceKey, {
+          tabId: socket.tabId || "",
+          timestamp: Date.now(),
+          socketId: socket.id,
+        });
+
         if (disconnectGraceTimers.has(graceKey)) {
           clearTimeout(disconnectGraceTimers.get(graceKey));
         }
@@ -4930,6 +5041,7 @@ const initSocket = (io) => {
         // Đặt thời gian ân hạn 15 giây (chống rớt mạng tạm thời, Next.js fast refresh, F5)
         const timer = setTimeout(async () => {
           disconnectGraceTimers.delete(graceKey);
+          recentRefreshSessions.delete(graceKey);
 
           try {
             // 1. KIỂM TRA QUAN TRỌNG NHẤT: User này có socket nào khác đang hoạt động trong phòng không?
