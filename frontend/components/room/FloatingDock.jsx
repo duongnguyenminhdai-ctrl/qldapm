@@ -17,6 +17,8 @@ import {
   Crown,
   LogOut,
   Users,
+  PictureInPicture2,
+  LayoutGrid,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ICON_STROKE } from "@/lib/constants";
@@ -71,6 +73,11 @@ export function FloatingDock({
   // Host status
   isHost = false,
   participantsCount = 1,
+  // Picture-in-Picture props
+  onTogglePip,
+  isPipActive = false,
+  // Google Meet Layout Settings
+  onOpenLayoutSettings,
 }) {
   const [reactionMenuOpen, setReactionMenuOpen] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
@@ -281,6 +288,44 @@ export function FloatingDock({
 
           {/* Widget Không gian âm thanh tập trung (Ambient Sounds) */}
           <AmbientSoundWidget />
+
+          {/* Nút Thu nhỏ dạng thanh dọc Meet (Picture-in-Picture) */}
+          <DockButton
+            label={isPipActive ? "Đóng cửa sổ thu nhỏ" : "Thu nhỏ thanh dọc (Meet PiP)"}
+            id="btn-dock-meet-pip"
+            pressed={isPipActive}
+            onClick={() => {
+              if (onTogglePip) {
+                onTogglePip();
+              } else if (typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent("vsr:toggle-meet-pip"));
+              }
+            }}
+            className={cn(
+              "relative transition-all duration-200",
+              isPipActive
+                ? "bg-[#c3a47b]/25 text-[#f5ede3] border border-[#c3a47b]/50 shadow-[0_0_10px_rgba(195,164,123,0.3)]"
+                : "hover:text-[#c3a47b] hover:border-[#c3a47b]/40"
+            )}
+          >
+            <PictureInPicture2 className="h-[18px] w-[18px]" strokeWidth={ICON_STROKE} />
+          </DockButton>
+
+          {/* Nút Điều chỉnh chế độ xem (Google Meet Change Layout) */}
+          <DockButton
+            label="Điều chỉnh chế độ xem"
+            id="btn-dock-change-layout"
+            onClick={() => {
+              if (onOpenLayoutSettings) {
+                onOpenLayoutSettings();
+              } else if (typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent("vsr:open-layout-settings"));
+              }
+            }}
+            className="hover:text-[#c3a47b] hover:border-[#c3a47b]/40"
+          >
+            <LayoutGrid className="h-[18px] w-[18px]" strokeWidth={ICON_STROKE} />
+          </DockButton>
 
           <span className="mx-1 hidden h-5 w-px bg-stone-300 dark:bg-[#3a3128] sm:block" aria-hidden />
 

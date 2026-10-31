@@ -5,7 +5,32 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
-import { Check, Copy, Link2, Users, AlertCircle, X, Award, QrCode, ShieldCheck, Lock, Unlock, Sun, Moon, ArrowRightLeft, Laptop } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Link2,
+  Users,
+  AlertCircle,
+  X,
+  Award,
+  QrCode,
+  ShieldCheck,
+  Lock,
+  Unlock,
+  Sun,
+  Moon,
+  ArrowRightLeft,
+  Laptop,
+  PictureInPicture2,
+  Video,
+  VideoOff,
+  Mic,
+  MicOff,
+  Cast,
+  ArrowLeft,
+  MoreVertical,
+  LayoutGrid,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ICON_STROKE } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +67,8 @@ import { FloatingReactions, useFloatingReactions } from "@/components/room/Float
 import { RoomNotificationBell } from "@/components/room/RoomNotificationBell";
 import { RoomQRCodeModal } from "@/components/room/RoomQRCodeModal";
 import { FocusStatusSelector } from "@/components/room/FocusStatusWidget";
+import { RoomMeetPiP } from "@/components/room/RoomMeetPiP";
+import { RoomLayoutSettingsModal } from "@/components/room/RoomLayoutSettingsModal";
 
 /**
  * Âm báo nhẹ hai âm sắc khi có người xin vào phòng (Web Audio API synth)
@@ -251,6 +278,9 @@ function LiveKitDockBridge({
   onSendReaction,
   isHost = false,
   participantsCount = 1,
+  isPipActive = false,
+  onTogglePip,
+  onOpenLayoutSettings,
 }) {
   const {
     isMicrophoneEnabled,
@@ -332,6 +362,9 @@ function LiveKitDockBridge({
       onSendReaction={onSendReaction}
       isHost={isHost}
       participantsCount={participantsCount}
+      isPipActive={isPipActive}
+      onTogglePip={onTogglePip}
+      onOpenLayoutSettings={onOpenLayoutSettings}
     />
   );
 }
@@ -472,6 +505,63 @@ export default function RoomLayout({ roomCode, initialRoom }) {
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [isTitlesModalOpen, setIsTitlesModalOpen] = useState(false);
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
+  const [isPipActive, setIsPipActive] = useState(false);
+  const [autoPipEnabled, setAutoPipEnabled] = useState(true);
+
+  // Quản lý Điều chỉnh chế độ xem (Google Meet Change Layout)
+  const [isLayoutSettingsOpen, setIsLayoutSettingsOpen] = useState(false);
+  const [layoutMode, setLayoutMode] = useState(() => {
+    if (typeof window === "undefined") return "auto";
+    return window.localStorage.getItem("vsr_meet_layout_mode") || "auto";
+  });
+  const [maxTiles, setMaxTiles] = useState(() => {
+    if (typeof window === "undefined") return 16;
+    const saved = parseInt(window.localStorage.getItem("vsr_meet_max_tiles"), 10);
+    return !isNaN(saved) && saved > 0 ? saved : 16;
+  });
+  const [hideNonVideo, setHideNonVideo] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("vsr_meet_hide_non_video") === "true";
+  });
+  const [pinnedMemberId, setPinnedMemberId] = useState(null);
+
+  const handleLayoutModeChange = useCallback((mode) => {
+    setLayoutMode(mode);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("vsr_meet_layout_mode", mode);
+    }
+    const modeNames = {
+      auto: "Tự động (linh động)",
+      grid: "Ô (cũ)",
+      spotlight: "Tiêu điểm",
+      sidebar: "Thanh bên",
+    };
+    addToast({
+      type: "info",
+      title: "Đã đổi chế độ xem",
+      body: `Đã chuyển sang: ${modeNames[mode] || mode}. Đã lưu cho các cuộc họp về sau.`,
+    });
+  }, [addToast]);
+
+  const handleMaxTilesChange = useCallback((val) => {
+    setMaxTiles(val);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("vsr_meet_max_tiles", String(val));
+    }
+  }, []);
+
+  const handleHideNonVideoChange = useCallback((val) => {
+    setHideNonVideo(val);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("vsr_meet_hide_non_video", String(val));
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleOpenLayoutModal = () => setIsLayoutSettingsOpen(true);
+    window.addEventListener("vsr:open-layout-settings", handleOpenLayoutModal);
+    return () => window.removeEventListener("vsr:open-layout-settings", handleOpenLayoutModal);
+  }, []);
   const [pendingMembers, setPendingMembers] = useState([]);
   const [isLocked, setIsLocked] = useState(Boolean(initialRoom?.isLocked));
   const [myFocusStatus, setMyFocusStatus] = useState(null);
@@ -767,8 +857,8 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       }
     };
 
-    // Emit join-room ngay sau khi connect
-    const emitJoin = () => {
+    // Emit join-room ngay sau khi connect (hỗ trợ cờ allowMultiDevice khi tham gia đồng thời 2 thiết bị)
+    const emitJoin = (options = {}) => {
       if (isForceEvicted) return;
 
       const uId = currentUser?.id || currentUser?._id;
@@ -776,10 +866,13 @@ export default function RoomLayout({ roomCode, initialRoom }) {
         socket.emit("user:authenticate", { userId: uId });
       }
 
+      const allowMultiDevice = Boolean(options?.allowMultiDevice);
+
       socket.emit(
         "join-room",
         {
           roomCode,
+          allowMultiDevice,
           user: {
             id: uId,
             name: currentUser?.name,
@@ -794,10 +887,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
         },
         (res) => {
           if (res?.deviceConflict || res?.code === "DEVICE_CONFLICT") {
-            setDeviceConflictData({
-              currentRoomId: res.currentRoomId,
-              currentRoomCode: res.currentRoomCode,
-            });
+            setDeviceConflictData(res);
             return;
           }
           if (res?.success && res?.participants) {
@@ -818,7 +908,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
 
     emitJoinRef.current = emitJoin;
 
-    // Lắng nghe xung đột thiết bị (Single Active Room Session / Switch Device)
+    // Lắng nghe xung đột thiết bị (Single Active Room Session / Switch Device phong cách Google Meet)
     const handleDeviceConflict = (data) => {
       console.warn("[Room] Nhận thông báo xung đột thiết bị:", data);
       setDeviceConflictData(data || { currentRoomCode: roomCode, currentRoomId: room?._id });
@@ -1913,12 +2003,12 @@ export default function RoomLayout({ roomCode, initialRoom }) {
     router.push("/dashboard?book=rooms");
   }, [leaveRoomNow, router]);
 
-  // Xử lý xác nhận chuyển phiên học sang thiết bị này (Google Meet style)
+  // Xử lý xác nhận chuyển phiên học sang thiết bị này (Google Meet: Chuyển qua thiết bị này)
   const handleConfirmSwitchDevice = useCallback(() => {
     const socket = socketRef.current;
     if (socket && socket.connected) {
       const targetRoomId = room?._id || deviceConflictData?.currentRoomId || roomCode;
-      const targetRoomCode = roomCode || deviceConflictData?.currentRoomCode;
+      const targetRoomCode = roomCode || deviceConflictData?.currentRoomCode || deviceConflictData?.targetRoomCode;
 
       socket.emit(
         "room:confirm-switch-device",
@@ -1937,6 +2027,47 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       setDeviceConflictData(null);
     }
   }, [room, deviceConflictData, roomCode]);
+
+  // Xử lý xác nhận đồng thời tham gia tại 2 thiết bị (Google Meet: Đồng thời tham gia tại đây)
+  const handleConfirmJoinBothDevices = useCallback(async () => {
+    const targetRoomCode = roomCode || deviceConflictData?.currentRoomCode || deviceConflictData?.targetRoomCode;
+    const targetRoomId = room?._id || deviceConflictData?.currentRoomId || targetRoomCode;
+
+    // 1. Lấy LiveKit Token mới có cờ isMultiDevice=true để LiveKit Server không kick phiên của thiết bị cũ
+    try {
+      const userDoc = getStoredUser() || currentUser;
+      const res = await livekitApi.getToken(targetRoomCode, userDoc?.name, true);
+      if (res?.token) {
+        setLivekitToken(res.token);
+        if (res.livekitUrl) setLivekitUrl(res.livekitUrl);
+      }
+    } catch (err) {
+      console.warn("[MultiDevice] Không thể lấy token LiveKit đa thiết bị:", err);
+    }
+
+    // 2. Thông báo cho Socket backend biết đây là kết nối thiết bị đồng thời
+    const socket = socketRef.current;
+    if (socket && socket.connected) {
+      socket.emit(
+        "room:confirm-join-multi-device",
+        {
+          roomId: targetRoomId,
+          roomCode: targetRoomCode,
+        },
+        () => {
+          setDeviceConflictData(null);
+          if (emitJoinRef.current) {
+            emitJoinRef.current({ allowMultiDevice: true });
+          }
+        }
+      );
+    } else {
+      setDeviceConflictData(null);
+      if (emitJoinRef.current) {
+        emitJoinRef.current({ allowMultiDevice: true });
+      }
+    }
+  }, [room, deviceConflictData, roomCode, currentUser]);
 
   const handleCancelSwitchDevice = useCallback(() => {
     setDeviceConflictData(null);
@@ -2046,6 +2177,18 @@ export default function RoomLayout({ roomCode, initialRoom }) {
         socket={socketRef.current}
         transcriptionOn={transcriptionOn}
         roomHasActiveTranscription={roomHasActiveTranscription}
+      />
+
+      {/* Cửa sổ thu nhỏ thanh dọc Google Meet Picture-in-Picture tự động khi chuyển tab / app */}
+      <RoomMeetPiP
+        roomTitle={displayTitle}
+        roomCode={displayCode}
+        members={members}
+        speakingId={speakingId}
+        screenSharing={screenSharing}
+        onLeave={handleLeave}
+        autoPipEnabled={autoPipEnabled}
+        onPipStateChange={setIsPipActive}
       />
 
       {/* Header phòng */}
@@ -2220,6 +2363,45 @@ export default function RoomLayout({ roomCode, initialRoom }) {
             )}
           </Button>
 
+          {/* Nút Thu nhỏ thanh dọc Google Meet PiP */}
+          <Button
+            variant={isPipActive ? "secondary" : "outline"}
+            size="sm"
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent("vsr:toggle-meet-pip"));
+              }
+            }}
+            id="btn-room-meet-pip-header"
+            className={cn(
+              "gap-1.5 text-xs transition-colors",
+              isPipActive
+                ? "border-amber-500/50 bg-amber-500/20 text-amber-300 hover:bg-amber-500/30"
+                : "border-stone-300 text-stone-700 hover:bg-stone-200 dark:border-[#3a3128] dark:text-[#d8c8b4] dark:hover:text-[#f5ede3] dark:hover:bg-[#201b18]"
+            )}
+            title={isPipActive ? "Đang mở cửa sổ thu nhỏ Meet PiP" : "Thu nhỏ thành thanh dọc (Google Meet PiP) khi chuyển tab"}
+          >
+            <PictureInPicture2 className="h-3.5 w-3.5 text-[#c3a47b]" />
+            <span className="hidden md:inline">Thu nhỏ (PiP)</span>
+          </Button>
+
+          {/* Nút Điều chỉnh chế độ xem (Google Meet Change Layout) */}
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={() => setIsLayoutSettingsOpen(true)}
+            id="btn-room-change-layout-header"
+            className="gap-1.5 text-xs border-stone-300 text-stone-700 hover:bg-stone-200 dark:border-[#3a3128] dark:text-[#d8c8b4] dark:hover:text-[#f5ede3] dark:hover:bg-[#201b18] transition-colors"
+            title="Điều chỉnh chế độ xem (Google Meet)"
+          >
+            <LayoutGrid className="h-3.5 w-3.5 text-blue-500 dark:text-[#8ab4f8]" />
+            <span className="hidden md:inline">
+              Bố cục ({layoutMode === "auto" ? "Tự động" : layoutMode === "grid" ? "Ô" : layoutMode === "spotlight" ? "Tiêu điểm" : "Thanh bên"})
+            </span>
+          </Button>
+
           {/* Chuông thông báo hoạt động phòng học (tin nhắn, file, giơ tay, yêu cầu vào phòng) */}
           <RoomNotificationBell
             roomCode={roomCode}
@@ -2293,6 +2475,11 @@ export default function RoomLayout({ roomCode, initialRoom }) {
               members={members}
               speakingId={speakingId}
               onScreenShareStateChange={setScreenSharing}
+              layoutMode={layoutMode}
+              maxTiles={maxTiles}
+              hideNonVideo={hideNonVideo}
+              pinnedMemberId={pinnedMemberId}
+              onPinMember={setPinnedMemberId}
             />
           )}
         </div>
@@ -2325,6 +2512,13 @@ export default function RoomLayout({ roomCode, initialRoom }) {
         onSendReaction={handleSendReaction}
         isHost={isHost}
         participantsCount={members.length}
+        isPipActive={isPipActive}
+        onTogglePip={() => {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("vsr:toggle-meet-pip"));
+          }
+        }}
+        onOpenLayoutSettings={() => setIsLayoutSettingsOpen(true)}
       />
 
       {/* Bảng vẽ chung (Whiteboard Overlay Modal) */}
@@ -2441,52 +2635,193 @@ export default function RoomLayout({ roomCode, initialRoom }) {
         accessType={room?.accessType || "OPEN"}
       />
 
-      {/* Modal Xác nhận Chuyển thiết bị phong cách Google Meet */}
-      {deviceConflictData && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md rounded-2xl border border-stone-200 bg-[#FAF8F5] p-6 shadow-2xl dark:border-[#3a3128] dark:bg-[#1c1815] text-[#2D241E] dark:text-[#f5ede3] space-y-5">
-            <div className="flex items-center gap-3.5">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-[#c3a47b]">
-                <ArrowRightLeft className="h-6 w-6 animate-pulse" />
+      {/* Modal Điều chỉnh chế độ xem (Google Meet Change Layout) */}
+      <RoomLayoutSettingsModal
+        isOpen={isLayoutSettingsOpen}
+        onClose={() => setIsLayoutSettingsOpen(false)}
+        layoutMode={layoutMode}
+        onLayoutModeChange={handleLayoutModeChange}
+        maxTiles={maxTiles}
+        onMaxTilesChange={handleMaxTilesChange}
+        hideNonVideo={hideNonVideo}
+        onHideNonVideoChange={handleHideNonVideoChange}
+      />
+
+      {/* Modal Phát hiện Xung đột Thiết bị Chuẩn Google Meet */}
+      {deviceConflictData && (() => {
+        const conflictUser = deviceConflictData.user || currentUser;
+        const displayName = conflictUser?.name || currentUser?.name || "Người dùng";
+        const displayEmail = conflictUser?.email || currentUser?.email || "student@studyspace.edu.vn";
+        const userInitial = displayName.charAt(0).toUpperCase() || "D";
+        const userAvatar = conflictUser?.avatar || currentUser?.avatar || "";
+        const targetCode = deviceConflictData.targetRoomCode || deviceConflictData.currentRoomCode || roomCode;
+        const targetTitle = deviceConflictData.targetRoomTitle || room?.title || "Cuộc gọi này dành cho mọi người";
+        const previewList = Array.isArray(deviceConflictData.previewParticipants)
+          ? deviceConflictData.previewParticipants.filter(Boolean)
+          : [];
+        const totalMembers = deviceConflictData.membersCount || (previewList.length > 0 ? previewList.length : 1);
+        const remainingCount = Math.max(0, totalMembers - previewList.length);
+
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+            <div className="relative w-full max-w-[420px] rounded-[32px] border border-white/10 bg-[#131314] text-[#e3e3e3] shadow-2xl overflow-hidden flex flex-col">
+              {/* Top Navigation Bar: Back arrow, room code, close */}
+              <div className="flex items-center justify-between px-5 pt-4 pb-2">
+                <button
+                  type="button"
+                  onClick={handleCancelSwitchDevice}
+                  className="p-2 -ml-2 rounded-full hover:bg-white/10 text-stone-300 transition-colors"
+                  title="Quay lại"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#202124] border border-white/10 text-xs font-mono font-medium text-stone-300 shadow-sm">
+                  <Link2 className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="tracking-wide lowercase">{targetCode}</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCancelSwitchDevice}
+                  className="p-2 -mr-2 rounded-full hover:bg-white/10 text-stone-400 hover:text-stone-200 transition-colors"
+                  title="Đóng"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <div>
-                <h3 className="font-serif text-lg font-bold text-[#2D241E] dark:text-[#f5ede3] leading-snug">
-                  Chuyển phiên học sang thiết bị này?
+
+              {/* Header Title & Participant Overview */}
+              <div className="px-6 pt-2 pb-3 text-center">
+                <h3 className="text-base sm:text-lg font-medium text-white tracking-tight">
+                  {targetTitle}
                 </h3>
-                <p className="text-xs text-stone-500 dark:text-[#8d7e71] mt-0.5">
-                  Phát hiện phiên đang mở:{" "}
-                  <span className="font-mono font-semibold text-amber-600 dark:text-[#c3a47b]">
-                    {deviceConflictData.currentRoomCode || roomCode}
-                  </span>
+                <p className="text-xs text-stone-400 mt-1 line-clamp-2 leading-relaxed">
+                  {previewList.length > 0 ? (
+                    <>
+                      Đang tham gia cuộc gọi:{" "}
+                      <span className="text-stone-200 font-medium">
+                        {previewList.join(", ")}
+                      </span>
+                      {remainingCount > 0 && (
+                        <span> và {remainingCount} người khác</span>
+                      )}
+                    </>
+                  ) : (
+                    "Tài khoản này hiện đang tham gia cuộc gọi trên một thiết bị khác"
+                  )}
                 </p>
               </div>
-            </div>
 
-            <p className="text-sm leading-relaxed text-stone-600 dark:text-[#c4b5a5]">
-              Tài khoản của bạn hiện đang tham gia một phòng học trên thiết bị khác. Nếu chuyển, thiết bị kia sẽ tự động rời khỏi phòng.
-            </p>
+              {/* Central Video Preview Card */}
+              <div className="px-6 py-2">
+                <div className="mx-auto w-[240px] sm:w-[260px] h-[300px] sm:h-[320px] rounded-[28px] bg-[#1e1f20] border border-white/10 relative flex flex-col items-center justify-between p-4 shadow-xl overflow-hidden">
+                  {/* Subtle top indicator */}
+                  <div className="w-full flex justify-end">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-medium border border-emerald-500/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Đang online
+                    </span>
+                  </div>
 
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={handleCancelSwitchDevice}
-                className="px-4 py-2.5 rounded-xl text-sm font-medium border border-stone-300 dark:border-[#3a3128] text-stone-700 dark:text-[#a89b8d] hover:bg-stone-200/60 dark:hover:bg-[#26201c] transition-colors"
-                id="btn-cancel-switch-device"
-              >
-                Ở lại ngoài này
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmSwitchDevice}
-                className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-[#b3894e] via-[#c3a47b] to-[#b3894e] hover:from-[#c3a47b] hover:to-[#b3894e] text-stone-950 shadow-lg shadow-amber-900/20 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
-                id="btn-confirm-switch-device"
-              >
-                Chuyển sang thiết bị này
-              </button>
+                  {/* Large Avatar Centerpiece */}
+                  <div className="my-auto flex flex-col items-center">
+                    {userAvatar ? (
+                      <img
+                        src={userAvatar}
+                        alt={displayName}
+                        className="w-28 h-28 rounded-full object-cover shadow-2xl ring-4 ring-black/40"
+                      />
+                    ) : (
+                      <div className="w-28 h-28 rounded-full bg-[#00897b] text-white text-5xl font-light flex items-center justify-center shadow-2xl ring-4 ring-black/40 select-none">
+                        {userInitial}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Floating Cam & Mic preview off indicators + User Name */}
+                  <div className="w-full flex flex-col items-center gap-2">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-11 h-11 rounded-full bg-[#f2b8b5] text-[#601410] flex items-center justify-center shadow-md select-none"
+                        title="Camera đang tắt"
+                      >
+                        <VideoOff className="w-5 h-5" />
+                      </div>
+                      <div
+                        className="w-11 h-11 rounded-full bg-[#f2b8b5] text-[#601410] flex items-center justify-center shadow-md select-none"
+                        title="Microphone đang tắt"
+                      >
+                        <MicOff className="w-5 h-5" />
+                      </div>
+                    </div>
+                    <div className="text-xs font-medium text-stone-300 tracking-wide truncate max-w-[220px] text-center pt-1">
+                      {displayName}
+                    </div>
+                  </div>
+                </div>
+
+                {/* User Account Capsule Pill */}
+                <div className="mt-3 flex justify-center">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#202124] border border-white/10 text-xs text-stone-300 max-w-[90%] shadow-sm">
+                    <div className="w-4 h-4 rounded-full bg-[#00897b] text-[10px] text-white flex items-center justify-center font-bold shrink-0">
+                      {userInitial}
+                    </div>
+                    <span className="truncate font-mono text-[11px] text-stone-300">
+                      {displayEmail}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom Sheet Action Drawer */}
+              <div className="mt-3 p-5 pt-3 bg-[#1e1f20] border-t border-white/10 space-y-3.5">
+                {/* Drawer handle */}
+                <div className="w-9 h-1 rounded-full bg-white/20 mx-auto mb-1" />
+
+                {/* Option 1: Hero Button - Đồng thời tham gia tại đây (2 thiết bị cùng vào 1 user) */}
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={handleConfirmJoinBothDevices}
+                    className="w-full py-3.5 px-6 rounded-full bg-[#a8c7fa] hover:bg-[#b8d4ff] active:scale-[0.98] text-[#041e49] font-medium text-sm sm:text-base flex items-center justify-center gap-2.5 transition-all shadow-lg shadow-blue-500/20"
+                    id="btn-confirm-join-multi-device"
+                  >
+                    <Video className="w-5 h-5 fill-current" />
+                    <span className="font-semibold tracking-tight">Đồng thời tham gia tại đây</span>
+                  </button>
+                  <p className="text-[11px] text-center text-stone-400 leading-tight">
+                    2 thiết bị dùng 1 tài khoản, hiển thị là 1 user và cùng tham gia cuộc họp
+                  </p>
+                </div>
+
+                {/* Option 2 & Cancel row */}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleConfirmSwitchDevice}
+                    className="flex-1 py-2.5 px-3 rounded-full bg-[#2a2b2e] hover:bg-[#35363a] active:scale-[0.98] border border-white/10 text-stone-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                    id="btn-confirm-switch-device"
+                    title="Thiết bị ban đầu tự động rời khỏi phòng họp"
+                  >
+                    <Cast className="w-4 h-4 text-stone-400 shrink-0" />
+                    <span className="truncate">Chuyển qua thiết bị này</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCancelSwitchDevice}
+                    className="py-2.5 px-4 rounded-full hover:bg-white/5 border border-white/10 text-stone-400 hover:text-stone-200 text-xs font-medium transition-colors"
+                    id="btn-cancel-switch-device"
+                  >
+                    Ở lại ngoài này
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Màn hình thông báo bị ngắt phiên do chuyển sang thiết bị khác */}
       {isForceEvicted && (

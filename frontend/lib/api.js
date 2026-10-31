@@ -315,12 +315,12 @@ export const roomsApi = {
 };
 
 export const livekitApi = {
-  /** Lấy token kết nối LiveKit Cloud */
-  getToken: (roomCode, username) =>
+  /** Lấy token kết nối LiveKit Cloud (hỗ trợ isMultiDevice khi cùng tham gia trên 2 thiết bị) */
+  getToken: (roomCode, username, isMultiDevice = false) =>
     apiClient(
       `/livekit/token?room=${encodeURIComponent(roomCode)}${
         username ? `&username=${encodeURIComponent(username)}` : ""
-      }`
+      }${isMultiDevice ? "&isMultiDevice=true" : ""}`
     ),
 };
 

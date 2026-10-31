@@ -1285,29 +1285,54 @@ const initSocket = (io) => {
         const userId = String(verifiedUserDoc._id);
         const uIdStr = String(verifiedUserDoc._id);
 
+        const isMultiDeviceRequested = Boolean(
+          arg1?.allowMultiDevice ||
+          arg2?.allowMultiDevice ||
+          socket.isMultiDeviceRequested ||
+          socket.handshake?.auth?.allowMultiDevice ||
+          socket.handshake?.query?.allowMultiDevice === "true"
+        );
+
         // Kiểm tra độc quyền phiên phòng học (Single Active Room Session / Switch Device như Google Meet)
         const existingSession = activeRoomSessions.get(uIdStr);
-        if (existingSession && existingSession.socketId !== socket.id) {
+        if (existingSession && existingSession.socketId !== socket.id && !isMultiDeviceRequested) {
           const oldSocket = io.sockets.sockets.get(existingSession.socketId);
           if (oldSocket && oldSocket.connected) {
             console.log(
               `[Socket Session] Xung đột phiên thiết bị cho user ${uIdStr}. Socket cũ: ${existingSession.socketId} (phòng ${existingSession.roomCode}), Socket mới: ${socket.id}`
             );
-            socket.emit("room:device-conflict", {
+
+            // Thu thập thông tin phòng và thành viên hiện tại để hiển thị preview chuẩn Google Meet
+            const previewParticipants = (checkRoom.participants || [])
+              .map((p) => p.userId?.name || p.name || "")
+              .filter(Boolean)
+              .slice(0, 3);
+            const totalCount = checkRoom.participants ? checkRoom.participants.length : 1;
+
+            const conflictPayload = {
               currentRoomId: existingSession.roomId,
               currentRoomCode: existingSession.roomCode,
               targetRoomCode: normalizedCode,
-            });
+              targetRoomTitle: checkRoom.title || `Phòng ${normalizedCode}`,
+              membersCount: totalCount,
+              previewParticipants,
+              user: {
+                id: uIdStr,
+                name: verifiedUserDoc.name,
+                email: verifiedUserDoc.email,
+                avatar: verifiedUserDoc.avatar,
+              },
+            };
+
+            socket.emit("room:device-conflict", conflictPayload);
             if (typeof cb === "function") {
               cb({
                 success: false,
                 deviceConflict: true,
                 code: "DEVICE_CONFLICT",
                 message:
-                  "Tài khoản của bạn hiện đang tham gia một phòng học trên thiết bị khác.",
-                currentRoomId: existingSession.roomId,
-                currentRoomCode: existingSession.roomCode,
-                targetRoomCode: normalizedCode,
+                  "Tài khoản của bạn hiện đang tham gia cuộc gọi trên thiết bị khác.",
+                ...conflictPayload,
               });
             }
             return;
@@ -1315,6 +1340,18 @@ const initSocket = (io) => {
             // Socket cũ không còn kết nối, giải phóng phiên cũ
             activeRoomSessions.delete(uIdStr);
           }
+        }
+
+        // Nếu người dùng chọn Đồng thời tham gia 2 thiết bị: ghi nhận socket này vào danh sách multiDevice
+        if (existingSession && isMultiDeviceRequested) {
+          if (!existingSession.deviceSocketIds) {
+            existingSession.deviceSocketIds = new Set([existingSession.socketId]);
+          }
+          existingSession.deviceSocketIds.add(socket.id);
+          socket.isMultiDevice = true;
+          console.log(
+            `[Socket Session] User ${uIdStr} ĐỒNG THỜI tham gia phòng ${normalizedCode} từ thiết bị thứ hai (socket ${socket.id})`
+          );
         }
 
         if (
@@ -4073,6 +4110,76 @@ const initSocket = (io) => {
     };
 
     /**
+     * Sự kiện xác nhận ĐỒNG THỜI tham gia tại 2 thiết bị (Google Meet Multi-device Co-presence)
+     * Cả 2 thiết bị cùng ở trong cuộc gọi và hiển thị thống nhất là 1 người dùng duy nhất
+     */
+    const handleConfirmJoinMultiDevice = async (payload = {}, callback) => {
+      try {
+        const cb = typeof callback === "function" ? callback : null;
+        let effectiveUserId =
+          socket.authUserId ||
+          socket.authUser?.id ||
+          socket.authUser?._id ||
+          socket.user?._id ||
+          socket.user?.id ||
+          socket.userData?.id ||
+          socket.userData?._id ||
+          socket.userId;
+
+        const passedToken =
+          payload.token ||
+          socket.handshake.auth?.token ||
+          socket.handshake.query?.token;
+
+        if (!effectiveUserId && passedToken) {
+          try {
+            const decoded = jwt.verify(passedToken, process.env.JWT_SECRET, {
+              algorithms: ["HS256"],
+            });
+            if (decoded?.id || decoded?._id) {
+              effectiveUserId = String(decoded.id || decoded._id);
+              socket.authUserId = effectiveUserId;
+              socket.authUser = decoded;
+            }
+          } catch (_) {}
+        }
+
+        if (!effectiveUserId) {
+          if (cb) cb({ success: false, message: "Unauthorized" });
+          return;
+        }
+
+        const uIdStr = String(effectiveUserId);
+        const existingSession = activeRoomSessions.get(uIdStr);
+        if (existingSession) {
+          if (!existingSession.deviceSocketIds) {
+            existingSession.deviceSocketIds = new Set([existingSession.socketId]);
+          }
+          existingSession.deviceSocketIds.add(socket.id);
+        } else {
+          activeRoomSessions.set(uIdStr, {
+            socketId: socket.id,
+            deviceSocketIds: new Set([socket.id]),
+            roomId: payload.roomId || "",
+            roomCode: (payload.roomCode || "").trim().toUpperCase(),
+          });
+        }
+
+        socket.isMultiDeviceRequested = true;
+        socket.isMultiDevice = true;
+        console.log(`[Socket Session] Đã xác nhận đồng thời tham gia 2 thiết bị cho user ${uIdStr}`);
+
+        if (cb) {
+          cb({ success: true, allowMultiDevice: true });
+        }
+        socket.emit("room:join-multi-device-success", { success: true });
+      } catch (err) {
+        console.error("[Socket Session] Lỗi room:confirm-join-multi-device:", err.message);
+        if (typeof callback === "function") callback({ success: false, error: err.message });
+      }
+    };
+
+    /**
      * Sự kiện chủ phòng ép kết thúc cuộc gọi cho mọi người
      */
     const handleTerminateRoom = async (data, callback) => {
@@ -4132,6 +4239,7 @@ const initSocket = (io) => {
     socket.on("leave_room", handleLeaveRoom);
     socket.on("room:leave", handleLeaveRoom);
     socket.on("room:confirm-switch-device", handleConfirmSwitchDevice);
+    socket.on("room:confirm-join-multi-device", handleConfirmJoinMultiDevice);
     socket.on("terminate_room", handleTerminateRoom);
     socket.on("room:terminate", handleTerminateRoom);
     socket.on("room:stay-alone", handleStayAlone);

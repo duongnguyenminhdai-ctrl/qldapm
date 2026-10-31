@@ -84,7 +84,13 @@ const getLiveKitToken = async (req, res, next) => {
       });
     }
 
-    const identity = String(req.user?.id || req.user?._id || `user_${Date.now()}`);
+    const baseId = String(req.user?.id || req.user?._id || `user_${Date.now()}`);
+    const isMultiDevice = Boolean(
+      req.body?.isMultiDevice ||
+      req.query?.isMultiDevice === "true" ||
+      req.query?.multiDevice === "true"
+    );
+    const identity = isMultiDevice ? `${baseId}_dev_${Date.now().toString(36)}` : baseId;
 
     // Khởi tạo AccessToken từ LiveKit Server SDK
     const at = new AccessToken(apiKey, apiSecret, {
@@ -92,10 +98,12 @@ const getLiveKitToken = async (req, res, next) => {
       name: username,
       ttl: "6h",
       metadata: JSON.stringify({
+        userId: baseId,
         equippedTitle: dbUser?.equippedTitle || "Nhập môn học giả",
         title: dbUser?.title || "Học viên",
         avatar: dbUser?.avatar || "",
         isPro: Boolean(dbUser?.isPro),
+        isMultiDevice,
       }),
     });
 
