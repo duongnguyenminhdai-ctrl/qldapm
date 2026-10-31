@@ -2007,8 +2007,8 @@ export default function RoomLayout({ roomCode, initialRoom }) {
   const handleConfirmSwitchDevice = useCallback(() => {
     const socket = socketRef.current;
     if (socket && socket.connected) {
-      const targetRoomId = room?._id || deviceConflictData?.currentRoomId || roomCode;
-      const targetRoomCode = roomCode || deviceConflictData?.currentRoomCode || deviceConflictData?.targetRoomCode;
+      const targetRoomCode = roomCode || deviceConflictData?.targetRoomCode || deviceConflictData?.currentRoomCode;
+      const targetRoomId = room?._id || deviceConflictData?.targetRoomId || deviceConflictData?.currentRoomId || targetRoomCode;
 
       socket.emit(
         "room:confirm-switch-device",
@@ -2030,8 +2030,8 @@ export default function RoomLayout({ roomCode, initialRoom }) {
 
   // Xử lý xác nhận đồng thời tham gia tại 2 thiết bị (Google Meet: Đồng thời tham gia tại đây)
   const handleConfirmJoinBothDevices = useCallback(async () => {
-    const targetRoomCode = roomCode || deviceConflictData?.currentRoomCode || deviceConflictData?.targetRoomCode;
-    const targetRoomId = room?._id || deviceConflictData?.currentRoomId || targetRoomCode;
+    const targetRoomCode = roomCode || deviceConflictData?.targetRoomCode || deviceConflictData?.currentRoomCode;
+    const targetRoomId = room?._id || deviceConflictData?.targetRoomId || deviceConflictData?.currentRoomId || targetRoomCode;
 
     // 1. Lấy LiveKit Token mới có cờ isMultiDevice=true để LiveKit Server không kick phiên của thiết bị cũ
     try {
@@ -2654,7 +2654,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
         const displayEmail = conflictUser?.email || currentUser?.email || "student@studyspace.edu.vn";
         const userInitial = displayName.charAt(0).toUpperCase() || "D";
         const userAvatar = conflictUser?.avatar || currentUser?.avatar || "";
-        const targetCode = deviceConflictData.targetRoomCode || deviceConflictData.currentRoomCode || roomCode;
+        const targetCode = roomCode || deviceConflictData.targetRoomCode || deviceConflictData.currentRoomCode;
         const targetTitle = deviceConflictData.targetRoomTitle || room?.title || "Cuộc gọi này dành cho mọi người";
         const previewList = Array.isArray(deviceConflictData.previewParticipants)
           ? deviceConflictData.previewParticipants.filter(Boolean)

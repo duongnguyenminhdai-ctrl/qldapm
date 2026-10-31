@@ -573,6 +573,23 @@ async function destroyAndCleanupRoom(roomCode, io, hostName = "Chủ phòng", re
     console.error(`[RoomCleanup] Lỗi xóa phòng khỏi DB:`, err.message);
   }
 
+  // 6b. Giải phóng hoàn toàn activeRoomSessions của toàn bộ người dùng trong phòng vừa bị đóng
+  for (const [uId, session] of activeRoomSessions.entries()) {
+    if (session && session.roomCode === normalizedCode) {
+      activeRoomSessions.delete(uId);
+      console.log(`[RoomCleanup] Đã dọn dẹp activeRoomSession của user ${uId} (phòng ${normalizedCode})`);
+    }
+  }
+
+  // Đặt lại roomCode = null cho tất cả socket còn vướng lại trong phòng
+  try {
+    const socketsInRoom = await io.in(normalizedCode).fetchSockets();
+    for (const s of socketsInRoom) {
+      s.roomCode = null;
+      s.leave(normalizedCode);
+    }
+  } catch (_) {}
+
   // 7. Phát thông báo giải tán phòng cho tất cả thành viên trong phòng, phòng chờ và SẢNH CHÍNH
   if (io) {
     const finalReason = reason || "Chủ phòng đã kết thúc phiên học";
@@ -1295,11 +1312,41 @@ const initSocket = (io) => {
 
         // Kiểm tra độc quyền phiên phòng học (Single Active Room Session / Switch Device như Google Meet)
         const existingSession = activeRoomSessions.get(uIdStr);
-        if (existingSession && existingSession.socketId !== socket.id && !isMultiDeviceRequested) {
-          const oldSocket = io.sockets.sockets.get(existingSession.socketId);
-          if (oldSocket && oldSocket.connected) {
+        if (existingSession && !isMultiDeviceRequested) {
+          const oldRoomCode = (existingSession.roomCode || "").trim().toUpperCase();
+          const oldSocket = existingSession.socketId ? io.sockets.sockets.get(existingSession.socketId) : null;
+
+          // 1. Kiểm tra xem phòng cũ trong session có thực sự CÒN TỒN TẠI VÀ ĐANG HOẠT ĐỘNG không
+          let isOldRoomActive = false;
+          if (oldRoomCode) {
+            try {
+              const oldRoomDoc = await Room.findOne({
+                roomCode: oldRoomCode,
+                status: { $in: ["active", "waiting_host"] },
+                isActive: true,
+              });
+              isOldRoomActive = Boolean(oldRoomDoc);
+            } catch (_) {}
+          }
+
+          // 2. Kiểm tra xem socket cũ có thực sự đang kết nối VÀ đang ở trong phòng cũ đó hay không
+          const isOldSocketActuallyInCall = Boolean(
+            oldSocket &&
+            oldSocket.connected &&
+            oldSocket.id !== socket.id &&
+            (
+              oldSocket.roomCode === oldRoomCode ||
+              (oldSocket.rooms && oldSocket.rooms.has(oldRoomCode))
+            )
+          );
+
+          // Nếu phòng cũ đã đóng/không còn hoạt động, HOẶC socket cũ không hề đang trong phòng cũ (ví dụ đang ở ngoài Dashboard):
+          if (!isOldRoomActive || !isOldSocketActuallyInCall) {
+            // Đây là session rác cũ đã kết thúc hoặc socket cũ đã ra ngoài dashboard -> Dọn dẹp ngay, không coi là xung đột!
+            activeRoomSessions.delete(uIdStr);
+          } else {
             console.log(
-              `[Socket Session] Xung đột phiên thiết bị cho user ${uIdStr}. Socket cũ: ${existingSession.socketId} (phòng ${existingSession.roomCode}), Socket mới: ${socket.id}`
+              `[Socket Session] Xung đột phiên thiết bị thực sự cho user ${uIdStr}. Socket cũ: ${existingSession.socketId} (phòng ${oldRoomCode}), Socket mới: ${socket.id}`
             );
 
             // Thu thập thông tin phòng và thành viên hiện tại để hiển thị preview chuẩn Google Meet
@@ -1311,7 +1358,7 @@ const initSocket = (io) => {
 
             const conflictPayload = {
               currentRoomId: existingSession.roomId,
-              currentRoomCode: existingSession.roomCode,
+              currentRoomCode: oldRoomCode,
               targetRoomCode: normalizedCode,
               targetRoomTitle: checkRoom.title || `Phòng ${normalizedCode}`,
               membersCount: totalCount,
@@ -1336,9 +1383,6 @@ const initSocket = (io) => {
               });
             }
             return;
-          } else {
-            // Socket cũ không còn kết nối, giải phóng phiên cũ
-            activeRoomSessions.delete(uIdStr);
           }
         }
 
@@ -3974,9 +4018,23 @@ const initSocket = (io) => {
         }
 
         if (userId) {
-          const current = activeRoomSessions.get(String(userId));
-          if (current && current.socketId === socket.id) {
-            activeRoomSessions.delete(String(userId));
+          const uIdKey = String(userId);
+          const current = activeRoomSessions.get(uIdKey);
+          if (current) {
+            if (current.deviceSocketIds) {
+              current.deviceSocketIds.delete(socket.id);
+            }
+            if (
+              current.socketId === socket.id ||
+              current.roomCode === normalizedCode ||
+              !current.deviceSocketIds ||
+              current.deviceSocketIds.size === 0
+            ) {
+              activeRoomSessions.delete(uIdKey);
+              console.log(
+                `[Socket Session] Đã xóa activeRoomSession của user ${uIdKey} khi rời phòng ${normalizedCode}`
+              );
+            }
           }
         }
 
@@ -4214,6 +4272,8 @@ const initSocket = (io) => {
 
         console.log(`[Socket] Chủ phòng [${userName}] kết thúc phòng ${normalizedCode} cho mọi người.`);
         await destroyAndCleanupRoom(normalizedCode, io, userName, "Chủ phòng đã kết thúc phiên học");
+        socket.roomCode = null;
+        socket.userData = null;
         if (typeof callback === "function") callback({ success: true });
       } catch (err) {
         console.error("[Socket] Lỗi terminate_room:", err.message);
@@ -4680,8 +4740,17 @@ const initSocket = (io) => {
       const effectiveDisconnId = String(userId || socket.authUserId || "");
       if (effectiveDisconnId) {
         const current = activeRoomSessions.get(effectiveDisconnId);
-        if (current && current.socketId === socket.id) {
-          activeRoomSessions.delete(effectiveDisconnId);
+        if (current) {
+          if (current.deviceSocketIds) {
+            current.deviceSocketIds.delete(socket.id);
+          }
+          if (
+            current.socketId === socket.id ||
+            !current.deviceSocketIds ||
+            current.deviceSocketIds.size === 0
+          ) {
+            activeRoomSessions.delete(effectiveDisconnId);
+          }
         }
       }
 
