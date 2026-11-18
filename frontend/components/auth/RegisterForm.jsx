@@ -81,9 +81,7 @@ export function RegisterForm({ onSwitchToLogin, onSwitchToForgot } = {}) {
       setInfoMessage(
         res?.message || "Mã xác thực OTP đã được gửi tới email của bạn."
       );
-      if (res?.data?.fallbackOtp) {
-        setOtp(res.data.fallbackOtp);
-      }
+      setOtp("");
       setStep("OTP");
     } catch (error) {
       const { formError: message, fieldErrors: nextFields } =
@@ -152,9 +150,7 @@ export function RegisterForm({ onSwitchToLogin, onSwitchToForgot } = {}) {
         type: "REGISTER",
       });
       setInfoMessage(res?.message || "Đã gửi lại mã OTP mới tới email của bạn.");
-      if (res?.data?.fallbackOtp) {
-        setOtp(res.data.fallbackOtp);
-      }
+      setOtp("");
       return true;
     } catch (err) {
       setFormError(
@@ -348,6 +344,8 @@ export function RegisterForm({ onSwitchToLogin, onSwitchToForgot } = {}) {
               type="button"
               onClick={() => {
                 setStep("FORM");
+                setOtp("");
+                setInfoMessage("");
                 setFormError("");
               }}
               className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-300 transition"

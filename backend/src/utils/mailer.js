@@ -90,6 +90,59 @@ const sendViaBrevo = async ({ to, subject, html }) => {
   return data;
 };
 
+const resolveGasWebAppUrl = (rawUrl) => {
+  const trimmed = String(rawUrl || "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  // Hỗ trợ trường hợp nhập nhầm Deployment ID (AKfycb...) thay vì URL /exec đầy đủ
+  return `https://script.google.com/macros/s/${trimmed}/exec`;
+};
+
+/**
+ * Gửi email qua Google Apps Script Web App (cổng 443 HTTPS - không bao giờ bị Render chặn)
+ */
+const sendViaGoogleAppsScript = async ({ to, subject, html }) => {
+  const gasUrl = resolveGasWebAppUrl(process.env.GAS_MAIL_URL);
+  const gasSecret = (process.env.GAS_MAIL_SECRET || "").trim();
+
+  const res = await fetch(gasUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      secret: gasSecret,
+      to,
+      subject,
+      html,
+      senderName: "Virtual Study Room",
+    }),
+    redirect: "follow",
+    signal: AbortSignal.timeout(15000),
+  });
+
+  const rawText = await res.text();
+  let data;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    throw new Error(
+      `Google Apps Script không trả về JSON (HTTP ${res.status}). Kiểm tra lại GAS_MAIL_URL hoặc quyền 'Anyone' khi Deploy Web App.`
+    );
+  }
+
+  if (!res.ok || !data?.success) {
+    throw new Error(
+      `Google Apps Script trả về lỗi (${res.status}): ${data?.message || rawText}`
+    );
+  }
+
+  console.log(
+    `[Mailer:GAS] Đã gửi OTP thành công tới ${to} (remainingQuota: ${data.remainingQuota ?? "N/A"})`
+  );
+  return data;
+};
+
 const escapeHtml = (str) =>
   String(str || "")
     .replace(/&/g, "&amp;")
@@ -239,17 +292,30 @@ const sendOtpEmail = async ({ email, otp, type, name = "" }) => {
     note,
   });
 
-  // Ưu tiên 1: Dùng Resend HTTP API nếu có RESEND_API_KEY (không bao giờ bị Render chặn)
+  const gasUrl = (process.env.GAS_MAIL_URL || "").trim();
+  const gasSecret = (process.env.GAS_MAIL_SECRET || "").trim();
+
+  // Ưu tiên 1: Dùng Google Apps Script Web App (HTTPS cổng 443 - không bao giờ bị Render chặn)
+  if (gasUrl && gasSecret) {
+    return await sendViaGoogleAppsScript({ to: email, subject, html });
+  }
+  if (gasUrl && !gasSecret) {
+    console.warn(
+      "[Mailer:GAS] Đã cấu hình GAS_MAIL_URL nhưng thiếu GAS_MAIL_SECRET, chuyển sang nhà cung cấp tiếp theo."
+    );
+  }
+
+  // Ưu tiên 2: Dùng Resend HTTP API nếu có RESEND_API_KEY (không bao giờ bị Render chặn)
   if (process.env.RESEND_API_KEY) {
     return await sendViaResend({ to: email, subject, html });
   }
 
-  // Ưu tiên 2: Dùng Brevo HTTP API nếu có BREVO_API_KEY (miễn phí 300 mail/ngày, port 443)
+  // Ưu tiên 3: Dùng Brevo HTTP API nếu có BREVO_API_KEY (miễn phí 300 mail/ngày, port 443)
   if (process.env.BREVO_API_KEY) {
     return await sendViaBrevo({ to: email, subject, html });
   }
 
-  // Ưu tiên 3: Nodemailer Gmail SMTP (cho Local hoặc Host cho phép cổng 465/587)
+  // Ưu tiên 4: Nodemailer Gmail SMTP (cho Local hoặc Host cho phép cổng 465/587)
   const transporter = getTransporter();
   const mailOptions = {
     from: `"Virtual Study Room" <${process.env.EMAIL_USER}>`,

@@ -13,6 +13,34 @@ const generateToken = (userId) => {
   });
 };
 
+/**
+ * Sinh mã OTP 6 chữ số ngẫu nhiên an toàn và bản băm bcrypt tương ứng.
+ */
+const createOtpPair = async () => {
+  const otp = crypto.randomInt(100000, 1000000).toString();
+  const otpHash = await bcrypt.hash(otp, 10);
+  return { otp, otpHash };
+};
+
+/**
+ * Gửi email OTP thực; trả HTTP 503 nếu nhà cung cấp email lỗi để tránh phát hành OTP chưa gửi được.
+ */
+const sendOtpOrFail = async ({ res, email, otp, type, name = "", errorMessage }) => {
+  try {
+    await sendOtpEmail({ email, otp, type, name });
+    return true;
+  } catch (mailError) {
+    console.error(`[Auth] Lỗi gửi email OTP (${type}):`, mailError?.message || mailError);
+    res.status(503).json({
+      success: false,
+      message:
+        errorMessage ||
+        "Không thể gửi mã xác thực OTP tới email lúc này. Vui lòng thử lại sau ít phút.",
+    });
+    return false;
+  }
+};
+
 const formatUser = (user) => ({
   id: user._id,
   name: user.name,
@@ -146,17 +174,21 @@ const registerRequestOtp = async (req, res, next) => {
       });
     }
 
-    // Sinh mã OTP 6 số
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpHash = await bcrypt.hash(otp, 10);
-
-    // Xóa OTP cũ cùng loại
-    await OtpVerification.deleteMany({ email: cleanEmail, type: "REGISTER" });
-
-    // Băm mật khẩu bằng bcrypt trước khi lưu tạm vào OtpVerification (chống rò rỉ Plaintext Password)
+    // Sinh mã OTP 6 số thực & băm mật khẩu trước khi lưu tạm
+    const { otp, otpHash } = await createOtpPair();
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Lưu bản ghi OtpVerification
+    // Chỉ lưu bản ghi OTP sau khi gửi email thực thành công
+    const sent = await sendOtpOrFail({
+      res,
+      email: cleanEmail,
+      otp,
+      type: "REGISTER",
+      name: name.trim(),
+    });
+    if (!sent) return;
+
+    await OtpVerification.deleteMany({ email: cleanEmail, type: "REGISTER" });
     await OtpVerification.create({
       email: cleanEmail,
       otpHash,
@@ -168,40 +200,11 @@ const registerRequestOtp = async (req, res, next) => {
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
-    // Gửi email OTP
-    let mailSuccess = false;
-    let mailErrorMsg = "";
-    try {
-      await sendOtpEmail({
-        email: cleanEmail,
-        otp,
-        type: "REGISTER",
-        name: name.trim(),
-      });
-      mailSuccess = true;
-    } catch (mailError) {
-      console.error("[Auth] Lỗi gửi email OTP đăng ký:", mailError?.message || mailError);
-      mailErrorMsg = mailError?.message || "Lỗi gửi email";
-    }
-
-    if (mailSuccess) {
-      return res.status(200).json({
-        success: true,
-        message: "Mã xác thực OTP 6 số đã được gửi tới email của bạn. Vui lòng kiểm tra hòm thư.",
-        data: {
-          email: cleanEmail,
-        },
-      });
-    }
-
-    // Smart Fallback nếu máy chủ Cloud (như Render Free) chặn cổng SMTP (465/587):
-    console.warn(`[Auth:Fallback] Kích hoạt mã OTP dự phòng cho ${cleanEmail}. Nguyên nhân: ${mailErrorMsg}`);
     return res.status(200).json({
       success: true,
-      message: `Hệ thống email cloud đang bị hạn chế SMTP. Mã xác thực OTP của bạn là: ${otp}`,
+      message: "Mã xác thực OTP 6 số đã được gửi tới email của bạn. Vui lòng kiểm tra hòm thư (kể cả mục Spam).",
       data: {
         email: cleanEmail,
-        fallbackOtp: otp,
       },
     });
   } catch (error) {
@@ -350,8 +353,17 @@ const forgotPasswordRequestOtp = async (req, res, next) => {
       });
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpHash = await bcrypt.hash(otp, 10);
+    const { otp, otpHash } = await createOtpPair();
+
+    const sent = await sendOtpOrFail({
+      res,
+      email: cleanEmail,
+      otp,
+      type: "RESET_PASSWORD",
+      name: user.name,
+      errorMessage: "Không thể gửi mã OTP đặt lại mật khẩu tới email lúc này. Vui lòng thử lại sau ít phút.",
+    });
+    if (!sent) return;
 
     await OtpVerification.deleteMany({ email: cleanEmail, type: "RESET_PASSWORD" });
 
@@ -363,34 +375,10 @@ const forgotPasswordRequestOtp = async (req, res, next) => {
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
-    let mailSuccess = false;
-    let mailErrorMsg = "";
-    try {
-      await sendOtpEmail({
-        email: cleanEmail,
-        otp,
-        type: "RESET_PASSWORD",
-        name: user.name,
-      });
-      mailSuccess = true;
-    } catch (mailError) {
-      console.error("[Auth] Lỗi gửi email OTP quên mật khẩu:", mailError?.message || mailError);
-      mailErrorMsg = mailError?.message || "Lỗi gửi email";
-    }
-
-    if (mailSuccess) {
-      return res.status(200).json({
-        success: true,
-        message: "Mã xác nhận 6 số đã được gửi tới email của bạn.",
-        data: { email: cleanEmail },
-      });
-    }
-
-    console.warn(`[Auth:Fallback] Kích hoạt OTP quên mật khẩu dự phòng cho ${cleanEmail}. Nguyên nhân: ${mailErrorMsg}`);
     return res.status(200).json({
       success: true,
-      message: `Hệ thống email cloud đang bị hạn chế SMTP. Mã OTP quên mật khẩu là: ${otp}`,
-      data: { email: cleanEmail, fallbackOtp: otp },
+      message: "Mã xác nhận 6 số đã được gửi tới email của bạn. Vui lòng kiểm tra hòm thư (kể cả mục Spam).",
+      data: { email: cleanEmail },
     });
   } catch (error) {
     next(error);
@@ -601,40 +589,26 @@ const resendOtp = async (req, res, next) => {
       });
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpHash = await bcrypt.hash(otp, 10);
+    const { otp, otpHash } = await createOtpPair();
+
+    const sent = await sendOtpOrFail({
+      res,
+      email: cleanEmail,
+      otp,
+      type,
+      name: lastRecord.data?.name || "",
+      errorMessage: "Không thể gửi lại mã OTP tới email lúc này. Vui lòng thử lại sau ít phút.",
+    });
+    if (!sent) return;
 
     lastRecord.otpHash = otpHash;
+    lastRecord.attempts = 0;
     lastRecord.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
     await lastRecord.save();
 
-    let mailSuccess = false;
-    let mailErrorMsg = "";
-    try {
-      await sendOtpEmail({
-        email: cleanEmail,
-        otp,
-        type,
-        name: lastRecord.data?.name || "",
-      });
-      mailSuccess = true;
-    } catch (mailError) {
-      console.error("[Auth] Lỗi gửi lại email OTP:", mailError?.message || mailError);
-      mailErrorMsg = mailError?.message || "Lỗi gửi email";
-    }
-
-    if (mailSuccess) {
-      return res.status(200).json({
-        success: true,
-        message: "Mã OTP mới đã được gửi tới email của bạn.",
-      });
-    }
-
-    console.warn(`[Auth:Fallback] Kích hoạt OTP gửi lại dự phòng cho ${cleanEmail}. Nguyên nhân: ${mailErrorMsg}`);
     return res.status(200).json({
       success: true,
-      message: `Hệ thống email cloud đang bị hạn chế SMTP. Mã OTP mới là: ${otp}`,
-      data: { fallbackOtp: otp },
+      message: "Mã OTP mới đã được gửi tới email của bạn. Vui lòng kiểm tra hòm thư (kể cả mục Spam).",
     });
   } catch (error) {
     next(error);
