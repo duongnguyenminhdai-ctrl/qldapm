@@ -6,6 +6,7 @@ import { GlobalNotificationToast } from "@/components/notifications/GlobalNotifi
 import { ConfirmProvider } from "@/context/ConfirmContext";
 import { BannedAccountModal } from "@/components/auth/BannedAccountModal";
 import { GlobalCardModal } from "@/components/cards/GlobalCardModal";
+import { IntroGate } from "@/components/landing/IntroGate";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -53,12 +54,14 @@ export default function RootLayout({ children }) {
           disableTransitionOnChange={false}
         >
           <ConfirmProvider>
-            {children}
-            <GlobalNotificationToast />
-            <BannedAccountModal />
-            <Suspense fallback={null}>
-              <GlobalCardModal />
-            </Suspense>
+            <IntroGate>
+              {children}
+              <GlobalNotificationToast />
+              <BannedAccountModal />
+              <Suspense fallback={null}>
+                <GlobalCardModal />
+              </Suspense>
+            </IntroGate>
           </ConfirmProvider>
         </ThemeProvider>
       </body>

@@ -1,20 +1,20 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { ArrowDown } from "lucide-react";
 
 export function CinematicIntro({
   videoUrl = "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260922_195107_ed3f055a-3a13-4a71-b743-e10310454246.mp4",
   tagline = "Virtual Study Room",
   title = "Không Gian Học Tập Tập Trung Sâu",
-  description = "A cinematic gateway into our platform. Cuộn chuột hoặc bấm nút để bắt đầu trải nghiệm.",
+  description = "A cinematic gateway into our platform. Bấm nút bên dưới để bắt đầu trải nghiệm.",
   buttonText = "Vào Hệ Thống",
   onComplete,
 }) {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const videoRef = useRef(null);
 
-  // Kích hoạt chuyển cảnh sang Login hoặc Dashboard
+  // Chỉ chuyển cảnh khi người dùng chủ động bấm nút trên màn hình Intro
   const handleProceed = useCallback(() => {
     if (isTransitioning) return;
     setIsTransitioning(true);
@@ -24,42 +24,6 @@ export function CinematicIntro({
       if (onComplete) onComplete();
     }, 1000);
   }, [isTransitioning, onComplete]);
-
-  // Bắt sự kiện cuộn chuột (Wheel) hoặc vuốt trên điện thoại (Touch)
-  useEffect(() => {
-    let touchStartY = 0;
-
-    const onWheel = (e) => {
-      if (Math.abs(e.deltaY) > 15) {
-        handleProceed();
-      }
-    };
-
-    const onTouchStart = (e) => {
-      if (e.touches && e.touches[0]) {
-        touchStartY = e.touches[0].clientY;
-      }
-    };
-
-    const onTouchMove = (e) => {
-      if (e.touches && e.touches[0]) {
-        const deltaY = e.touches[0].clientY - touchStartY;
-        if (Math.abs(deltaY) > 20) {
-          handleProceed();
-        }
-      }
-    };
-
-    window.addEventListener("wheel", onWheel, { passive: true });
-    window.addEventListener("touchstart", onTouchStart, { passive: true });
-    window.addEventListener("touchmove", onTouchMove, { passive: true });
-
-    return () => {
-      window.removeEventListener("wheel", onWheel);
-      window.removeEventListener("touchstart", onTouchStart);
-      window.removeEventListener("touchmove", onTouchMove);
-    };
-  }, [handleProceed]);
 
   return (
     <div
@@ -123,12 +87,9 @@ export function CinematicIntro({
         </button>
       </div>
 
-      {/* 4. Gợi ý cuộn chuột ở đáy màn hình */}
-      <div className="w-full flex flex-col items-center gap-2.5 z-10 text-[10px] sm:text-[11px] tracking-[0.24em] uppercase text-neutral-300/90 drop-shadow">
-        <div className="w-5 h-8 rounded-full border border-white/40 flex items-start justify-center p-1.5 backdrop-blur-sm">
-          <div className="w-1 h-2 bg-white rounded-full animate-bounce" />
-        </div>
-        <span>Cuộn chuột hoặc bấm nút để tiếp tục</span>
+      {/* 4. Gợi ý bấm nút ở đáy màn hình */}
+      <div className="w-full flex flex-col items-center gap-2 z-10 text-[10px] sm:text-[11px] tracking-[0.24em] uppercase text-neutral-300/90 drop-shadow">
+        <span>Bấm nút để tiếp tục</span>
       </div>
     </div>
   );

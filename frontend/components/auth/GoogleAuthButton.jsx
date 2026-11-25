@@ -6,7 +6,7 @@ import Script from "next/script";
 import { authApi, setAuthSession } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 
-export function GoogleAuthButton({ callbackUrl = "/", onError }) {
+export function GoogleAuthButton({ callbackUrl = "/dashboard", onError }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [scriptLoaded, setScriptLoaded] = useState(false);
@@ -50,7 +50,7 @@ export function GoogleAuthButton({ callbackUrl = "/", onError }) {
                   token: res.data.token,
                   user: res.data.user,
                 });
-                router.push(callbackUrl === "/dashboard" ? "/" : callbackUrl);
+                router.push(callbackUrl === "/" ? "/dashboard" : callbackUrl);
                 router.refresh();
               }
             } catch (err) {

@@ -289,7 +289,7 @@ export function RegisterForm({ onSwitchToLogin, onSwitchToForgot } = {}) {
           </div>
 
           <GoogleAuthButton
-            callbackUrl="/"
+            callbackUrl="/dashboard"
             onError={(err) => setFormError(err)}
           />
         </form>

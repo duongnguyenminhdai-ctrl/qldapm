@@ -5,45 +5,43 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CinematicIntro } from "@/components/landing/CinematicIntro";
 import AuthSceneLayout from "@/components/auth/AuthSceneLayout";
 import { getStoredUser, getAuthToken } from "@/lib/api";
+import { markIntroGatePassed, resetIntroGate } from "@/lib/introGate";
 
 function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const bookParam = searchParams.get("book");
   const [showIntro, setShowIntro] = useState(true);
-  const [checkedAuth, setCheckedAuth] = useState(false);
+  const [hasActiveSession, setHasActiveSession] = useState(false);
 
   useEffect(() => {
+    resetIntroGate();
     const user = getStoredUser();
     const token = getAuthToken();
-    if (user && token) {
-      if (bookParam) {
-        router.replace(`/dashboard?book=${bookParam}`);
-      } else {
-        router.replace("/dashboard");
-      }
-    } else {
-      setCheckedAuth(true);
-    }
-  }, [router, bookParam]);
+    setHasActiveSession(Boolean(user && token));
+  }, []);
 
   const handleComplete = () => {
+    markIntroGatePassed();
     const user = getStoredUser();
     const token = getAuthToken();
     if (user && token) {
       router.push(bookParam ? `/dashboard?book=${bookParam}` : "/dashboard");
     } else {
+      if (typeof window !== "undefined") {
+        window.history.replaceState(null, "", "/login");
+      }
       setShowIntro(false);
     }
   };
 
-  if (!checkedAuth) {
-    return (
-      <div className="min-h-screen bg-[#141210] flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
-      </div>
-    );
-  }
+  const handleBackToIntro = () => {
+    resetIntroGate();
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", "/");
+    }
+    setShowIntro(true);
+  };
 
   return (
     <div className="min-h-screen bg-[#141210] text-[#f5ede3]">
@@ -51,14 +49,18 @@ function HomeContent() {
         <CinematicIntro
           tagline="Virtual Study Room"
           title="Chào Mừng Bạn"
-          description="Cuộn chuột hoặc bấm nút để bắt đầu đăng nhập"
-          buttonText="Đăng Nhập Ngay"
+          description={
+            hasActiveSession
+              ? "Bấm nút bên dưới để vào không gian học tập của bạn"
+              : "Bấm nút bên dưới để bắt đầu đăng nhập"
+          }
+          buttonText={hasActiveSession ? "Vào Hệ Thống" : "Đăng Nhập Ngay"}
           onComplete={handleComplete}
         />
       ) : (
         <AuthSceneLayout
           defaultView="login"
-          onBackToIntro={() => setShowIntro(true)}
+          onBackToIntro={handleBackToIntro}
         />
       )}
     </div>

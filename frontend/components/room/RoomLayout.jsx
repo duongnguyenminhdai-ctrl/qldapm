@@ -2232,7 +2232,7 @@ export default function RoomLayout({ roomCode, initialRoom }) {
       <header className="relative z-[30] flex shrink-0 items-center justify-between gap-3 border-b border-stone-200 bg-[#FAF8F5]/90 dark:border-[#3a3128] dark:bg-[#181513]/90 backdrop-blur-sm px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3 min-w-0">
           <Link
-            href="/?book=rooms"
+            href="/dashboard?book=rooms"
             title="Về sảnh sách phòng học"
             className="shrink-0 hover:opacity-85 transition-opacity"
           >
