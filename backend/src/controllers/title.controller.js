@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const { TITLE_MILESTONES, ALL_TITLES } = require("../constants/titles");
 const { getIo } = require("../config/socketInstance");
+const { resolveEffectiveMaxStreak } = require("../utils/streakHelper");
 
 /**
  * Helper: Tự động kiểm tra và mở khóa các danh hiệu theo thành tích của User
@@ -15,7 +16,19 @@ async function autoUnlockTitles(user) {
   currentUnlocked.add("nhap-mon-hoc-gia");
   currentUnlocked.add("thieu-uy");
 
-  const userStreak = user.streak || 1;
+  const effectiveMaxStreak = resolveEffectiveMaxStreak({
+    streak: user.streak,
+    maxStreak: user.maxStreak,
+    unlockedTitleIds: Array.from(currentUnlocked),
+    equippedTitle: user.equippedTitle || user.activeTitle || user.title || "",
+  });
+
+  let maxStreakChanged = false;
+  if (!user.maxStreak || user.maxStreak < effectiveMaxStreak) {
+    user.maxStreak = effectiveMaxStreak;
+    maxStreakChanged = true;
+  }
+
   const studyHours = (user.totalStudySeconds || 0) / 3600;
   const isPro = Boolean(user.isPro);
   const proMonths = user.proMonths || (isPro ? 1 : 0);
@@ -26,7 +39,7 @@ async function autoUnlockTitles(user) {
     let milestoneQualified = false;
 
     if (milestone.category === "STREAK") {
-      if (userStreak >= (milestone.minStreak || 1)) {
+      if (effectiveMaxStreak >= (milestone.minStreak || 1)) {
         milestoneQualified = true;
       }
     } else if (milestone.category === "HOURS") {
@@ -60,10 +73,12 @@ async function autoUnlockTitles(user) {
   const updatedList = Array.from(currentUnlocked);
   const hasChanges =
     newlyUnlockedCount > 0 ||
-    updatedList.length !== (user.unlockedTitleIds || []).length;
+    updatedList.length !== (user.unlockedTitleIds || []).length ||
+    maxStreakChanged;
 
   if (hasChanges) {
     user.unlockedTitleIds = updatedList;
+    user.maxStreak = effectiveMaxStreak;
     if (!user.equippedTitle) {
       user.equippedTitle = "Nhập môn học giả";
     }
@@ -72,6 +87,7 @@ async function autoUnlockTitles(user) {
       {
         $set: {
           unlockedTitleIds: updatedList,
+          maxStreak: effectiveMaxStreak,
           equippedTitle: user.equippedTitle || "Nhập môn học giả",
         },
       }
@@ -105,30 +121,18 @@ const getTitles = async (req, res) => {
     const equippedTitle = user.equippedTitle || "Nhập môn học giả";
     const unlockedSet = new Set(user.unlockedTitleIds || []);
 
+    const effectiveMaxStreak = resolveEffectiveMaxStreak({
+      streak: userStreak,
+      maxStreak: user.maxStreak,
+      unlockedTitleIds: Array.from(unlockedSet),
+      equippedTitle,
+    });
+
     const milestonesData = TITLE_MILESTONES.map((m) => {
       let currentVal = 0;
       let targetVal = 0;
       let unit = "";
       let isMilestoneUnlocked = false;
-
-      if (m.category === "STREAK") {
-        currentVal = userStreak;
-        targetVal = m.minStreak;
-        unit = "ngày";
-        isMilestoneUnlocked = userStreak >= targetVal;
-      } else if (m.category === "HOURS") {
-        currentVal = parseFloat(studyHours.toFixed(1));
-        targetVal = m.minHours;
-        unit = "giờ";
-        isMilestoneUnlocked = studyHours >= targetVal;
-      } else if (m.category === "PRO") {
-        currentVal = proMonths;
-        targetVal = 1;
-        unit = "tháng";
-        isMilestoneUnlocked = isPro;
-      }
-
-      const percent = targetVal > 0 ? Math.min(100, Math.round((currentVal / targetVal) * 100)) : 100;
 
       const titles = m.titles.map((t) => {
         let isTitleUnlocked = unlockedSet.has(t.id);
@@ -145,6 +149,27 @@ const getTitles = async (req, res) => {
           isEquipped: equippedTitle === t.name,
         };
       });
+
+      const anyTitleUnlocked = titles.some((t) => t.isUnlocked);
+
+      if (m.category === "STREAK") {
+        targetVal = m.minStreak;
+        unit = "ngày";
+        isMilestoneUnlocked = effectiveMaxStreak >= targetVal || anyTitleUnlocked;
+        currentVal = isMilestoneUnlocked ? Math.max(userStreak, targetVal) : userStreak;
+      } else if (m.category === "HOURS") {
+        currentVal = parseFloat(studyHours.toFixed(1));
+        targetVal = m.minHours;
+        unit = "giờ";
+        isMilestoneUnlocked = studyHours >= targetVal || anyTitleUnlocked;
+      } else if (m.category === "PRO") {
+        currentVal = proMonths;
+        targetVal = 1;
+        unit = "tháng";
+        isMilestoneUnlocked = isPro || anyTitleUnlocked;
+      }
+
+      const percent = targetVal > 0 ? Math.min(100, Math.round((currentVal / targetVal) * 100)) : 100;
 
       return {
         milestoneId: m.milestoneId,
@@ -170,6 +195,8 @@ const getTitles = async (req, res) => {
         unlockedTitleIds: Array.from(unlockedSet),
         stats: {
           streak: userStreak,
+          maxStreak: effectiveMaxStreak,
+          longestStreak: effectiveMaxStreak,
           totalStudySeconds: user.totalStudySeconds || 0,
           studyHours: parseFloat(studyHours.toFixed(1)),
           isPro,
@@ -238,16 +265,21 @@ const equipTitle = async (req, res) => {
 
     const unlockedSet = new Set(user.unlockedTitleIds || []);
     let isQualified = unlockedSet.has(titleMeta.id);
+    const effectiveMax = resolveEffectiveMaxStreak({
+      streak: user.streak,
+      maxStreak: user.maxStreak,
+      unlockedTitleIds: Array.from(unlockedSet),
+      equippedTitle: user.equippedTitle || user.activeTitle || user.title || "",
+    });
 
     // Kiểm tra trực tiếp các mốc điều kiện để bảo đảm tính chuẩn xác
     if (!isQualified) {
-      const userStreak = user.streak || 1;
       const studyHours = (user.totalStudySeconds || 0) / 3600;
       const isPro = Boolean(user.isPro);
       const proMonths = user.proMonths || (isPro ? 1 : 0);
 
       if (titleMeta.category === "STREAK") {
-        isQualified = userStreak >= (titleMeta.minStreak || 1);
+        isQualified = effectiveMax >= (titleMeta.minStreak || 1);
       } else if (titleMeta.category === "HOURS") {
         isQualified = studyHours >= (titleMeta.minHours || 0);
       } else if (titleMeta.category === "PRO") {
@@ -268,7 +300,7 @@ const equipTitle = async (req, res) => {
     if (!isQualified) {
       let requirementNotice = "";
       if (titleMeta.category === "STREAK") {
-        requirementNotice = `Cần chuỗi học liên tục từ ${titleMeta.minStreak} ngày trở lên. Hiện tại: ${user.streak || 1} ngày.`;
+        requirementNotice = `Cần chuỗi học liên tục từ ${titleMeta.minStreak} ngày trở lên. Streak cao nhất của bạn: ${effectiveMax} ngày (hiện tại: ${user.streak || 1} ngày).`;
       } else if (titleMeta.category === "HOURS") {
         requirementNotice = `Cần tích lũy tối thiểu ${titleMeta.minHours} giờ học. Hiện tại: ${((user.totalStudySeconds || 0) / 3600).toFixed(1)} giờ.`;
       } else if (titleMeta.category === "PRO") {
@@ -281,10 +313,11 @@ const equipTitle = async (req, res) => {
       });
     }
 
-    // Lưu equippedTitle, activeTitle và title vào MongoDB
+    // Lưu equippedTitle, activeTitle, title và đồng bộ maxStreak vào MongoDB
     user.equippedTitle = titleMeta.name;
     user.activeTitle = titleMeta.name;
     user.title = titleMeta.name;
+    user.maxStreak = effectiveMax;
 
     await User.updateOne(
       { _id: user._id },
@@ -294,6 +327,7 @@ const equipTitle = async (req, res) => {
           activeTitle: titleMeta.name,
           title: titleMeta.name,
           unlockedTitleIds: Array.from(unlockedSet),
+          maxStreak: effectiveMax,
         },
       }
     );
@@ -313,6 +347,7 @@ const equipTitle = async (req, res) => {
 
     // Lấy user document hoàn chỉnh để trả về
     const updatedUser = await User.findById(user._id).select("-password");
+    const updatedMaxStreak = resolveEffectiveMaxStreak(updatedUser);
     const formattedUser = {
       id: updatedUser._id,
       _id: updatedUser._id,
@@ -327,6 +362,8 @@ const equipTitle = async (req, res) => {
       activeTitle: updatedUser.activeTitle || titleMeta.name,
       unlockedTitleIds: updatedUser.unlockedTitleIds || Array.from(unlockedSet),
       streak: updatedUser.streak || 1,
+      maxStreak: updatedMaxStreak,
+      longestStreak: updatedMaxStreak,
       totalStudySeconds: updatedUser.totalStudySeconds || 0,
       proMonths: updatedUser.proMonths || 0,
     };

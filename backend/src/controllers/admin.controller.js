@@ -475,12 +475,19 @@ const updateUser = async (req, res, next) => {
       "school",
       "bio",
       "streak",
+      "maxStreak",
     ];
 
     updatableFields.forEach((field) => {
       if (req.body[field] !== undefined) {
         if (field === "streak") {
           user.streak = Math.max(0, parseInt(req.body.streak, 10) || 0);
+          user.maxStreak = Math.max(user.maxStreak || 1, user.streak);
+        } else if (field === "maxStreak") {
+          user.maxStreak = Math.max(
+            user.streak || 1,
+            parseInt(req.body.maxStreak, 10) || 1
+          );
         } else {
           user[field] = req.body[field];
         }

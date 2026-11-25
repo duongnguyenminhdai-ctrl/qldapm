@@ -126,3 +126,37 @@ TITLE_MILESTONES.forEach((m) => {
     TITLE_STYLE_MAP[t.id] = t;
   });
 });
+
+/**
+ * Tính streak cao nhất từng đạt từ dữ liệu stats/user và các danh hiệu streak đã mở.
+ */
+export function resolveMaxStreakFromUser(user, stats) {
+  const currentStreak = Math.max(1, Number(stats?.streak ?? user?.streak) || 1);
+  const unlockedSet = new Set(
+    Array.isArray(user?.unlockedTitleIds) ? user.unlockedTitleIds : []
+  );
+  const equipped = user?.equippedTitle || user?.activeTitle || user?.title || "";
+
+  let streakFromTitles = 1;
+  for (const m of TITLE_MILESTONES) {
+    if (m.category !== "STREAK") continue;
+    const matched = m.titles.some(
+      (t) =>
+        unlockedSet.has(t.id) ||
+        (equipped && (equipped === t.name || equipped === t.id))
+    );
+    if (matched) {
+      streakFromTitles = Math.max(streakFromTitles, m.minStreak || 1);
+    }
+  }
+
+  return Math.max(
+    1,
+    currentStreak,
+    Number(stats?.maxStreak) || 0,
+    Number(stats?.longestStreak) || 0,
+    Number(user?.maxStreak) || 0,
+    Number(user?.longestStreak) || 0,
+    streakFromTitles
+  );
+}

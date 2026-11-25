@@ -33,7 +33,7 @@ import { RoomCard } from "@/components/dashboard/RoomCard";
 import { CreateRoomModal } from "@/components/dashboard/CreateRoomModal";
 import { JoinRoomForm } from "@/components/dashboard/JoinRoomForm";
 import { PaginationControl } from "@/components/ui/PaginationControl";
-import { TITLE_STYLE_MAP, TITLE_MILESTONES } from "@/lib/titlesConfig";
+import { TITLE_STYLE_MAP, TITLE_MILESTONES, resolveMaxStreakFromUser } from "@/lib/titlesConfig";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "@/context/ConfirmContext";
 import FileItemCard, { cleanFileName, formatFileSize } from "@/components/files/FileItemCard";
@@ -912,17 +912,32 @@ export default function BookShowcaseHome() {
     );
   }, [titlesData, user?.unlockedTitleIds]);
 
+  const maxStreakDays = useMemo(
+    () => resolveMaxStreakFromUser(user, stats),
+    [user, stats]
+  );
+
   const filteredMilestones = useMemo(() => {
     const rawMilestones = (titlesData?.milestones || TITLE_MILESTONES.map((m) => {
       let currentVal = 0, targetVal = 0, unit = "";
-      if (m.category === "STREAK") { currentVal = userStreak; targetVal = m.minStreak; unit = "ngày"; }
+      if (m.category === "STREAK") {
+        targetVal = m.minStreak;
+        unit = "ngày";
+        const anyTitleUnlocked = m.titles.some((t) => unlockedSet.has(t.id));
+        const isMilestoneUnlocked = maxStreakDays >= targetVal || anyTitleUnlocked;
+        currentVal = isMilestoneUnlocked ? Math.max(userStreak, targetVal) : userStreak;
+      }
       else if (m.category === "HOURS") { currentVal = parseFloat(userStudyHours.toFixed(1)); targetVal = m.minHours; unit = "giờ"; }
       else if (m.category === "PRO") { currentVal = proMonths; targetVal = 1; unit = "tháng"; }
       const percent = targetVal > 0 ? Math.min(100, Math.round((currentVal / targetVal) * 100)) : 100;
       return {
         ...m,
         milestoneId: m.milestoneId,
-        isUnlocked: m.category === "STREAK" ? userStreak >= targetVal : m.category === "HOURS" ? userStudyHours >= targetVal : isPro,
+        isUnlocked: m.category === "STREAK"
+          ? (maxStreakDays >= targetVal || m.titles.some(t => unlockedSet.has(t.id)))
+          : m.category === "HOURS"
+          ? userStudyHours >= targetVal
+          : isPro,
         progress: { current: currentVal, target: targetVal, unit, percent },
         titles: m.titles.map((t) => ({
           ...t,
@@ -932,16 +947,23 @@ export default function BookShowcaseHome() {
       };
     })).filter((m) => titleFilter === "all" || m.category === titleFilter);
 
-    return rawMilestones.map((m) => ({
-      ...m,
-      titles: (m.titles || []).map((t) => ({
-        ...t,
-        isEquipped: equippedTitle === t.name || equippedTitle === t.id,
-      })),
-    }));
-  }, [titlesData, userStreak, userStudyHours, isPro, proMonths, unlockedSet, equippedTitle, titleFilter]);
+    return rawMilestones.map((m) => {
+      const anyTitleUnlocked = (m.titles || []).some(t => t.isUnlocked || unlockedSet.has(t.id));
+      const isMilestoneUnlocked = m.category === "STREAK"
+        ? (Boolean(m.isUnlocked) || maxStreakDays >= (m.minStreak || 1) || anyTitleUnlocked)
+        : Boolean(m.isUnlocked);
+      return {
+        ...m,
+        isUnlocked: isMilestoneUnlocked,
+        titles: (m.titles || []).map((t) => ({
+          ...t,
+          isEquipped: equippedTitle === t.name || equippedTitle === t.id,
+        })),
+      };
+    });
+  }, [titlesData, userStreak, maxStreakDays, userStudyHours, isPro, proMonths, unlockedSet, equippedTitle, titleFilter]);
 
-  const totalUnlocked = (titlesData?.milestones || []).flatMap(m => m.titles || []).filter(t => t.isUnlocked).length;
+  const totalUnlocked = (titlesData?.milestones || filteredMilestones).flatMap(m => m.titles || []).filter(t => t.isUnlocked).length;
   const totalTitles = (titlesData?.milestones || TITLE_MILESTONES).flatMap(m => m.titles || []).length;
 
   // Chat filtered
@@ -1319,7 +1341,14 @@ export default function BookShowcaseHome() {
                 </div>
                 <div className="bs-stats-grid">
                   <div className="bs-stat-card">
-                    <span className="bs-stat-label">Chuỗi ngày học</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="bs-stat-label">Chuỗi ngày học</span>
+                      {user && (
+                        <span className="text-[10px] font-semibold text-amber-500/90 tracking-tight" title="Streak cao nhất từng đạt">
+                          Cao nhất: {maxStreakDays} ngày
+                        </span>
+                      )}
+                    </div>
                     <div className="bs-stat-value">{streakDays} <span className="bs-stat-unit">ngày liên tục</span></div>
                   </div>
                   <div className="bs-stat-card">
@@ -1366,10 +1395,17 @@ export default function BookShowcaseHome() {
                     <div key={milestone.milestoneId || mIdx} className="bs-milestone">
                       <div className="bs-milestone-header">
                         <span className="bs-milestone-desc">{milestone.description}</span>
-                        <span className="bs-milestone-progress">{milestone.progress?.current}/{milestone.progress?.target} {milestone.progress?.unit}</span>
+                        <span className="bs-milestone-progress">
+                          {milestone.isUnlocked
+                            ? "✓ Đã đạt mốc"
+                            : `${milestone.progress?.current}/${milestone.progress?.target} ${milestone.progress?.unit}`}
+                        </span>
                       </div>
                       <div className="bs-milestone-bar-wrap">
-                        <div className="bs-milestone-bar" style={{ width: `${milestone.progress?.percent || 0}%` }} />
+                        <div
+                          className="bs-milestone-bar"
+                          style={{ width: `${milestone.isUnlocked ? 100 : (milestone.progress?.percent || 0)}%` }}
+                        />
                       </div>
                       <div className="bs-title-cards">
                         {(milestone.titles || []).map((t) => {

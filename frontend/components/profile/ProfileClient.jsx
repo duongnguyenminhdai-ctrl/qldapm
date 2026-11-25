@@ -22,6 +22,7 @@ import {
   Loader2,
   Clock,
   Flame,
+  Award,
   Layers,
   Gift,
   Crown,
@@ -38,6 +39,7 @@ import {
   getAuthToken,
 } from "@/lib/api";
 import { connectSocket } from "@/lib/socket";
+import { resolveMaxStreakFromUser } from "@/lib/titlesConfig";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -581,11 +583,17 @@ export default function ProfileClient() {
           </div>
 
           {/* Huy hiệu streak & thời gian học */}
-          <div className="flex items-center gap-2 font-mono text-xs">
-            <div className="flex items-center gap-1.5 rounded-lg border border-[#E6DEC8] dark:border-[#3a3128] bg-[#fbf9f5] dark:bg-[#201b18] px-3 py-1.5 text-amber-700 dark:text-[#c3a47b]">
+          <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+            <div className="flex items-center gap-1.5 rounded-lg border border-[#E6DEC8] dark:border-[#3a3128] bg-[#fbf9f5] dark:bg-[#201b18] px-3 py-1.5 text-amber-700 dark:text-[#c3a47b]" title="Chuỗi học liên tục hiện tại">
               <Flame className="h-3.5 w-3.5 fill-current" />
               <span>{user?.streak || 1} ngày streak</span>
             </div>
+            {user && (
+              <div className="flex items-center gap-1.5 rounded-lg border border-[#E6DEC8] dark:border-[#3a3128] bg-[#fbf9f5] dark:bg-[#201b18] px-3 py-1.5 text-amber-700 dark:text-[#c3a47b]" title="Streak cao nhất từng đạt được">
+                <Award className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                <span>Streak cao nhất: {resolveMaxStreakFromUser(user)} ngày</span>
+              </div>
+            )}
             <div className="flex items-center gap-1.5 rounded-lg border border-[#E6DEC8] dark:border-[#3a3128] bg-[#fbf9f5] dark:bg-[#201b18] px-3 py-1.5 text-[#4a3f35] dark:text-[#d8c8b4]">
               <Clock className="h-3.5 w-3.5 text-[#8C7E72] dark:text-[#75695e]" />
               <span>{Math.round((user?.totalStudySeconds || 0) / 60)} phút</span>

@@ -40,6 +40,7 @@ import {
 } from "@/lib/api";
 import { connectSocket } from "@/lib/socket";
 import { ICON_STROKE } from "@/lib/constants";
+import { resolveMaxStreakFromUser } from "@/lib/titlesConfig";
 import TitlesModal from "@/components/titles/TitlesModal";
 
 export function HomeBentoGrid() {
@@ -280,6 +281,7 @@ export function HomeBentoGrid() {
 
   // Thống kê chuỗi ngày và giờ học thực tế
   const streakDays = stats?.streak ?? user?.streak ?? (user ? 1 : 0);
+  const maxStreakDays = user ? resolveMaxStreakFromUser(user, stats) : 0;
   const totalStudySeconds =
     stats?.totalStudySeconds ?? user?.totalStudySeconds ?? 0;
   const studyHours = user
@@ -383,9 +385,19 @@ export function HomeBentoGrid() {
             {/* Streak & Số giờ học */}
             <div className="mt-4 grid grid-cols-2 gap-3">
               <div className="rounded-xl border border-zinc-200/60 bg-zinc-50/70 p-3.5 dark:border-zinc-800/50 dark:bg-zinc-950/40">
-                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                  Chuỗi ngày học
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                    Chuỗi ngày học
+                  </p>
+                  {user && (
+                    <span
+                      className="text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+                      title="Streak cao nhất từng đạt"
+                    >
+                      Cao nhất: {maxStreakDays} ngày
+                    </span>
+                  )}
+                </div>
                 <div className="mt-1.5 flex items-baseline gap-1.5">
                   <span className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
                     {streakDays}

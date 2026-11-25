@@ -147,6 +147,10 @@ const userSchema = new mongoose.Schema(
       type: Number,
       default: 1,
     },
+    maxStreak: {
+      type: Number,
+      default: 1,
+    },
     lastActiveDate: {
       type: String,
       default: null,

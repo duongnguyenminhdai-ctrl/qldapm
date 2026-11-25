@@ -239,6 +239,7 @@ async function recordStudyTime(userId, joinTimestamp, ioInstance = null) {
         const streakUpdate = calculateStreakUpdate(user);
         if (streakUpdate.shouldUpdate) {
           user.streak = streakUpdate.streak;
+          user.maxStreak = streakUpdate.maxStreak;
           user.lastActiveDate = streakUpdate.lastActiveDate;
         }
 

@@ -5,7 +5,11 @@ const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
 const OtpVerification = require("../models/OtpVerification");
 const { sendOtpEmail } = require("../utils/mailer");
-const { calculateStreakUpdate, getVietnamDateString } = require("../utils/streakHelper");
+const {
+  calculateStreakUpdate,
+  getVietnamDateString,
+  resolveEffectiveMaxStreak,
+} = require("../utils/streakHelper");
 
 const generateToken = (userId) => {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
@@ -41,37 +45,63 @@ const sendOtpOrFail = async ({ res, email, otp, type, name = "", errorMessage })
   }
 };
 
-const formatUser = (user) => ({
-  id: user._id,
-  name: user.name,
-  email: user.email,
-  avatar: user.avatar,
-  role: user.role || "USER",
-  status: user.status || "ACTIVE",
-  birthYear: user.birthYear || null,
-  phone: user.phone || "",
-  school: user.school || "",
-  bio: user.bio || "",
-  createdAt: user.createdAt,
-  isPro: user.isPro || false,
-  isVip: user.isPro || false,
-  proExpiresAt: user.proExpiresAt || null,
-  vipExpiresAt: user.proExpiresAt || null,
-  title: user.equippedTitle || user.activeTitle || user.title || "Nhập môn học giả",
-  equippedTitle: user.equippedTitle || user.activeTitle || user.title || "Nhập môn học giả",
-  activeTitle: user.activeTitle || user.equippedTitle || user.title || "Nhập môn học giả",
-  unlockedTitleIds: user.unlockedTitleIds || ["nhap-mon-hoc-gia", "thieu-uy"],
-  streak: user.streak || 1,
-  lastActiveDate: user.lastActiveDate || null,
-  totalStudySeconds: user.totalStudySeconds || 0,
-  proMonths: user.proMonths || (user.isPro ? 1 : 0),
-  dailyStudyMinutes: user.dailyStudyMinutes || 0,
-  lastCardRewardDate: user.lastCardRewardDate || null,
-  cardDraws: user.cardDraws || 0,
-  cardInventory: user.cardInventory || [],
-  isVerified: user.isVerified ?? true,
-  authProvider: user.authProvider || "LOCAL",
-});
+const syncUserStreak = async (user, { persist = true } = {}) => {
+  const streakUpdate = calculateStreakUpdate(user);
+  if (!streakUpdate.shouldUpdate) return false;
+  user.streak = streakUpdate.streak;
+  user.maxStreak = streakUpdate.maxStreak;
+  user.lastActiveDate = streakUpdate.lastActiveDate;
+  if (persist) {
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          streak: streakUpdate.streak,
+          maxStreak: streakUpdate.maxStreak,
+          lastActiveDate: streakUpdate.lastActiveDate,
+        },
+      }
+    );
+  }
+  return true;
+};
+
+const formatUser = (user) => {
+  const maxStreak = resolveEffectiveMaxStreak(user);
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    avatar: user.avatar,
+    role: user.role || "USER",
+    status: user.status || "ACTIVE",
+    birthYear: user.birthYear || null,
+    phone: user.phone || "",
+    school: user.school || "",
+    bio: user.bio || "",
+    createdAt: user.createdAt,
+    isPro: user.isPro || false,
+    isVip: user.isPro || false,
+    proExpiresAt: user.proExpiresAt || null,
+    vipExpiresAt: user.proExpiresAt || null,
+    title: user.equippedTitle || user.activeTitle || user.title || "Nhập môn học giả",
+    equippedTitle: user.equippedTitle || user.activeTitle || user.title || "Nhập môn học giả",
+    activeTitle: user.activeTitle || user.equippedTitle || user.title || "Nhập môn học giả",
+    unlockedTitleIds: user.unlockedTitleIds || ["nhap-mon-hoc-gia", "thieu-uy"],
+    streak: user.streak || 1,
+    maxStreak,
+    longestStreak: maxStreak,
+    lastActiveDate: user.lastActiveDate || null,
+    totalStudySeconds: user.totalStudySeconds || 0,
+    proMonths: user.proMonths || (user.isPro ? 1 : 0),
+    dailyStudyMinutes: user.dailyStudyMinutes || 0,
+    lastCardRewardDate: user.lastCardRewardDate || null,
+    cardDraws: user.cardDraws || 0,
+    cardInventory: user.cardInventory || [],
+    isVerified: user.isVerified ?? true,
+    authProvider: user.authProvider || "LOCAL",
+  };
+};
 
 /**
  * POST /api/auth/register (truyền thống giữ tương thích ngược)
@@ -740,11 +770,8 @@ const googleLogin = async (req, res, next) => {
         changed = true;
       }
 
-      // Cập nhật streak theo giờ Việt Nam
-      const streakUpdate = calculateStreakUpdate(user);
-      if (streakUpdate.shouldUpdate) {
-        user.streak = streakUpdate.streak;
-        user.lastActiveDate = streakUpdate.lastActiveDate;
+      // Cập nhật streak & maxStreak theo giờ Việt Nam
+      if (await syncUserStreak(user, { persist: false })) {
         changed = true;
       }
 
@@ -846,21 +873,8 @@ const login = async (req, res, next) => {
       await User.updateOne({ _id: user._id }, { $set: { failedLoginAttempts: 0, lockUntil: null } });
     }
 
-    // Cập nhật streak theo giờ Việt Nam
-    const streakUpdate = calculateStreakUpdate(user);
-    if (streakUpdate.shouldUpdate) {
-      user.streak = streakUpdate.streak;
-      user.lastActiveDate = streakUpdate.lastActiveDate;
-      await User.updateOne(
-        { _id: user._id },
-        {
-          $set: {
-            streak: streakUpdate.streak,
-            lastActiveDate: streakUpdate.lastActiveDate,
-          },
-        }
-      );
-    }
+    // Cập nhật streak & maxStreak theo giờ Việt Nam
+    await syncUserStreak(user);
 
     const token = generateToken(user._id);
 
@@ -891,21 +905,8 @@ const getMe = async (req, res, next) => {
       });
     }
 
-    // Cập nhật streak theo giờ Việt Nam nếu sang ngày mới
-    const streakUpdate = calculateStreakUpdate(user);
-    if (streakUpdate.shouldUpdate) {
-      user.streak = streakUpdate.streak;
-      user.lastActiveDate = streakUpdate.lastActiveDate;
-      await User.updateOne(
-        { _id: user._id },
-        {
-          $set: {
-            streak: streakUpdate.streak,
-            lastActiveDate: streakUpdate.lastActiveDate,
-          },
-        }
-      );
-    }
+    // Cập nhật streak & maxStreak theo giờ Việt Nam nếu sang ngày mới
+    await syncUserStreak(user);
 
     return res.status(200).json({
       success: true,

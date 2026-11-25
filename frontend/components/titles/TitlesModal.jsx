@@ -17,11 +17,12 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { titlesApi, getStoredUser, setStoredUser, setAuthSession } from "@/lib/api";
-import { TITLE_STYLE_MAP, TITLE_MILESTONES } from "@/lib/titlesConfig";
+import { TITLE_STYLE_MAP, TITLE_MILESTONES, resolveMaxStreakFromUser } from "@/lib/titlesConfig";
 import { cn } from "@/lib/utils";
 
-// Cache dữ liệu danh hiệu tại client để mở modal lập tức 0ms không phải chờ mạng
+// Cache dữ liệu danh hiệu theo userId tại client để mở modal nhanh mà không lẫn giữa các tài khoản
 let cachedTitlesData = null;
+let cachedTitlesUserId = null;
 
 function buildFallbackTitlesData(storedUser) {
   const userStreak = storedUser?.streak || 1;
@@ -36,33 +37,13 @@ function buildFallbackTitlesData(storedUser) {
       : ["nhap-mon-hoc-gia", "thieu-uy"]
   );
 
+  const effectiveMaxStreak = resolveMaxStreakFromUser(storedUser);
+
   const milestonesData = TITLE_MILESTONES.map((m) => {
     let currentVal = 0;
     let targetVal = 0;
     let unit = "";
     let isMilestoneUnlocked = false;
-
-    if (m.category === "STREAK") {
-      currentVal = userStreak;
-      targetVal = m.minStreak;
-      unit = "ngày";
-      isMilestoneUnlocked = userStreak >= targetVal;
-    } else if (m.category === "HOURS") {
-      currentVal = parseFloat(studyHours.toFixed(1));
-      targetVal = m.minHours;
-      unit = "giờ";
-      isMilestoneUnlocked = studyHours >= targetVal;
-    } else if (m.category === "PRO") {
-      currentVal = proMonths;
-      targetVal = 1;
-      unit = "tháng";
-      isMilestoneUnlocked = isPro;
-    }
-
-    const percent =
-      targetVal > 0
-        ? Math.min(100, Math.round((currentVal / targetVal) * 100))
-        : 100;
 
     const titles = m.titles.map((t) => {
       let isTitleUnlocked = unlockedSet.has(t.id);
@@ -79,6 +60,30 @@ function buildFallbackTitlesData(storedUser) {
         isEquipped: equippedTitle === t.name,
       };
     });
+
+    const anyTitleUnlocked = titles.some((t) => t.isUnlocked);
+
+    if (m.category === "STREAK") {
+      targetVal = m.minStreak;
+      unit = "ngày";
+      isMilestoneUnlocked = effectiveMaxStreak >= targetVal || anyTitleUnlocked;
+      currentVal = isMilestoneUnlocked ? Math.max(userStreak, targetVal) : userStreak;
+    } else if (m.category === "HOURS") {
+      currentVal = parseFloat(studyHours.toFixed(1));
+      targetVal = m.minHours;
+      unit = "giờ";
+      isMilestoneUnlocked = studyHours >= targetVal || anyTitleUnlocked;
+    } else if (m.category === "PRO") {
+      currentVal = proMonths;
+      targetVal = 1;
+      unit = "tháng";
+      isMilestoneUnlocked = isPro || anyTitleUnlocked;
+    }
+
+    const percent =
+      targetVal > 0
+        ? Math.min(100, Math.round((currentVal / targetVal) * 100))
+        : 100;
 
     return {
       milestoneId: m.milestoneId,
@@ -102,6 +107,8 @@ function buildFallbackTitlesData(storedUser) {
     unlockedTitleIds: Array.from(unlockedSet),
     stats: {
       streak: userStreak,
+      maxStreak: effectiveMaxStreak,
+      longestStreak: effectiveMaxStreak,
       totalStudySeconds: storedUser?.totalStudySeconds || 0,
       studyHours: parseFloat(studyHours.toFixed(1)),
       isPro,
@@ -136,7 +143,11 @@ function getTitleColorClass(title) {
 export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
   const [activeTab, setActiveTab] = useState("ALL"); // ALL | STREAK | HOURS | PRO
   const [data, setData] = useState(() => {
-    return cachedTitlesData || buildFallbackTitlesData(getStoredUser());
+    const stored = getStoredUser();
+    const uid = stored?.id || stored?._id || null;
+    return cachedTitlesData && cachedTitlesUserId === uid
+      ? cachedTitlesData
+      : buildFallbackTitlesData(stored);
   });
   const [loading, setLoading] = useState(false);
   const [equippingId, setEquippingId] = useState(null);
@@ -144,6 +155,8 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
 
   const fetchTitles = useCallback(() => {
     setLoading(true);
+    const stored = getStoredUser();
+    const uid = stored?.id || stored?._id || null;
 
     titlesApi
       .getTitles()
@@ -151,6 +164,7 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
         if (res && res.success && res.data) {
           setData(res.data);
           cachedTitlesData = res.data;
+          cachedTitlesUserId = uid;
         }
       })
       .catch((err) => {
@@ -165,9 +179,12 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
   useEffect(() => {
     if (!isOpen) return;
 
-    // Đảm bảo data luôn sẵn sàng ngay lập tức từ storedUser nếu chưa có cache
-    if (!cachedTitlesData) {
-      setData(buildFallbackTitlesData(getStoredUser()));
+    const stored = getStoredUser();
+    const uid = stored?.id || stored?._id || null;
+    if (!cachedTitlesData || cachedTitlesUserId !== uid) {
+      cachedTitlesData = null;
+      cachedTitlesUserId = uid;
+      setData(buildFallbackTitlesData(stored));
     } else {
       setData(cachedTitlesData);
     }
@@ -356,11 +373,18 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
               </span>
             </div>
 
-            <div className="flex items-center gap-4 text-stone-700 dark:text-stone-300">
-              <span className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-stone-700 dark:text-stone-300">
+              <span className="flex items-center gap-1" title="Chuỗi ngày học liên tục hiện tại">
                 <Flame className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 Streak:{" "}
                 <strong className="text-stone-900 dark:text-stone-100">{data.stats?.streak} ngày</strong>
+              </span>
+              <span className="flex items-center gap-1" title="Streak cao nhất từng đạt được">
+                <Award className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                Streak cao nhất:{" "}
+                <strong className="text-stone-900 dark:text-stone-100">
+                  {data.stats?.maxStreak || data.stats?.longestStreak || data.stats?.streak} ngày
+                </strong>
               </span>
               <span className="flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
@@ -510,13 +534,19 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
                     </div>
 
                     {/* Progress indicator */}
-                    {!isUnlocked && m.progress && (
+                    {!isUnlocked && m.progress ? (
                       <div className="sm:text-right shrink-0">
                         <div className="text-[11px] font-medium text-stone-600 dark:text-stone-400 mb-1">
                           Tiến độ:{" "}
                           <span className="text-amber-700 dark:text-amber-400 font-semibold">
                             {m.progress.current}/{m.progress.target} {m.progress.unit}
                           </span>
+                          {m.category === "STREAK" &&
+                            (data?.stats?.maxStreak || 1) > (data?.stats?.streak || 1) && (
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400/90 ml-1">
+                                (Cao nhất: {data.stats.maxStreak} ngày)
+                              </span>
+                            )}
                         </div>
                         <div className="w-32 sm:w-28 h-1.5 bg-stone-200 rounded-full overflow-hidden border border-stone-300 dark:bg-[#141210] dark:border-[#2d2620]">
                           <div
@@ -524,6 +554,13 @@ export default function TitlesModal({ isOpen, onClose, onEquippedChange }) {
                             style={{ width: `${m.progress.percent}%` }}
                           />
                         </div>
+                      </div>
+                    ) : (
+                      <div className="sm:text-right shrink-0">
+                        <span className="text-[11px] font-medium text-amber-700 dark:text-amber-300/90 flex items-center sm:justify-end gap-1">
+                          <Check className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                          Hoàn thành
+                        </span>
                       </div>
                     )}
                   </div>
