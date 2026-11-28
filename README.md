@@ -89,3 +89,7 @@ App chạy tại http://localhost:3000.
 | GET    | `/api/rooms/:id`     | Chi tiết phòng                             |
 
 Socket.io đã gắn vào HTTP server; handler trong `backend/src/sockets/index.js` sẵn sàng mở rộng.
+
+## Tài liệu thiết kế tích hợp AI (Bước 12 - PTTK HTTT)
+
+* Xem chi tiết thiết kế tính năng AI có trách nhiệm (Study AI Tutor & Tóm tắt biên bản buổi học) tại: [BUOC_12_THIET_KE_AI.md](./BUOC_12_THIET_KE_AI.md)
